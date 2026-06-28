@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myEnergy — Live Savings Session</title>
+<style>
+  :root{
+    --bg:#0d0f14; --surface:#161a24; --surface2:#1e2433; --border:#2a3147;
+    --text:#e2e8f0; --muted:#64748b; --green:#22c55e; --solar:#f59e0b;
+    --battery:#10b981; --blue:#3b82f6; --red:#ef4444; --violet:#8b5cf6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .logo{font-size:20px;font-weight:700}.logo span{color:var(--solar)}
+  .nav{display:flex;gap:10px;align-items:center}
+  .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-family:inherit;font-size:12px;cursor:pointer;text-decoration:none}
+  .btn:hover{border-color:var(--muted)}
+  .engine-badge{font-size:11px;color:var(--green);background:#10241c;border:1px solid #1f3d30;border-radius:20px;padding:5px 12px}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 28px;display:flex;flex-direction:column;gap:18px}
+
+  .hero{background:linear-gradient(135deg,#10241c 0%,#0f1a2e 100%);border:1px solid #1f3d30;border-radius:16px;padding:30px 34px;text-align:center}
+  .hero-label{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#4ade80}
+  .hero-amount{font-size:72px;font-weight:800;color:var(--green);line-height:1.05;margin:6px 0;font-variant-numeric:tabular-nums}
+  .hero-sub{font-size:13px;color:var(--muted)}
+  .rate-chips{display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .chip{background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px}
+  .chip b{color:var(--green)}
+
+  .decision{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--violet);border-radius:12px;padding:18px 22px;display:flex;align-items:center;gap:16px}
+  .decision .icon{font-size:30px}
+  .decision .body{flex:1}
+  .decision .title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--violet);margin-bottom:4px}
+  .decision .reason{font-size:15px;line-height:1.5}
+  .audit{font-size:11px;color:var(--green);background:#10241c;border:1px solid #1f3d30;border-radius:8px;padding:6px 12px;white-space:nowrap}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+  .card.me{border-top:3px solid var(--green)}
+  .card.base{border-top:3px solid var(--red)}
+  .card h3{font-size:13px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+  .card h3 .tag{font-size:10px;color:var(--muted);font-weight:400}
+  .metric{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;color:var(--muted)}
+  .metric b{color:var(--text);font-variant-numeric:tabular-nums}
+  .soc-track{height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin:8px 0 4px}
+  .soc-fill{height:100%;border-radius:5px;transition:width .5s}
+
+  .context{display:flex;gap:10px;flex-wrap:wrap}
+  .ctx{flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px}
+  .ctx .k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .ctx .v{font-size:18px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .note{font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">my<span>Energy</span> · Live Session</div>
+  <div class="nav">
+    <span class="engine-badge" id="engine">engine…</span>
+    <button class="btn" id="reset">⟳ New session</button>
+    <a class="btn" href="/">← Dashboard</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="hero-label">💶 Saved this session (banked)</div>
+    <div class="hero-amount" id="savings">€0.00</div>
+    <div class="hero-sub">vs. a dumb reactive controller — same factory, same hardware, same weather</div>
+    <div class="rate-chips">
+      <div class="chip">rate now: <b id="rate-h">€0/h</b></div>
+      <div class="chip">live: <b id="rate-s">€0/s</b></div>
+      <div class="chip">current gap: <b id="gap-now">€0.00</b></div>
+      <div class="chip">cut bill by <b id="pct">0%</b></div>
+    </div>
+  </div>
+
+  <div class="decision">
+    <div class="icon" id="dec-icon">🧠</div>
+    <div class="body">
+      <div class="title">myEnergy decision right now</div>
+      <div class="reason" id="dec-reason">starting…</div>
+    </div>
+    <div class="audit" id="audit">✓ verified optimal</div>
+  </div>
+
+  <div class="cols">
+    <div class="card me">
+      <h3>🟢 myEnergy <span class="tag">LP optimiser</span></h3>
+      <div class="metric"><span>Battery</span><b id="me-soc">—%</b></div>
+      <div class="soc-track"><div class="soc-fill" id="me-bar" style="width:0%;background:var(--green)"></div></div>
+      <div class="metric"><span>Battery action</span><b id="me-batt">—</b></div>
+      <div class="metric"><span>Cost this session</span><b id="me-cost">€—</b></div>
+    </div>
+    <div class="card base">
+      <h3>🔴 Baseline <span class="tag">reactive, no foresight</span></h3>
+      <div class="metric"><span>Battery</span><b id="base-soc">—%</b></div>
+      <div class="soc-track"><div class="soc-fill" id="base-bar" style="width:0%;background:var(--red)"></div></div>
+      <div class="metric"><span>Battery action</span><b>reacts only</b></div>
+      <div class="metric"><span>Cost this session</span><b id="base-cost">€—</b></div>
+    </div>
+  </div>
+
+  <div class="context">
+    <div class="ctx"><div class="k">Sim clock</div><div class="v" id="clock">—</div></div>
+    <div class="ctx"><div class="k">Spot price</div><div class="v" id="price">— €</div></div>
+    <div class="ctx"><div class="k">Solar</div><div class="v" id="solar">— kW</div></div>
+    <div class="ctx"><div class="k">Load</div><div class="v" id="load">— kW</div></div>
+  </div>
+
+  <div class="note" id="speednote">
+    Running the validated simulation engine. Decisions are checked against an independent
+    brute-force optimum (see test_decisions.py).
+  </div>
+</div>
+
+<script>
+let displayed = 0;      // smoothly-animated savings
+let authoritative = 0;  // last value from server
+let ratePerSec = 0;     // €/real-second to interpolate between polls
+let lastFrame = performance.now();
+
+// A fresh session id per page load → the server gives THIS viewer its own
+// LiveSim that starts near €0, instead of a shared global mid-session.
+const SESSION_ID = (crypto.randomUUID ? crypto.randomUUID()
+                    : 'sid-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+const qs = 'session=' + encodeURIComponent(SESSION_ID);
+
+function fmtMoney(v, dp=2){ return '€' + v.toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp}); }
+
+async function poll(){
+  try{
+    const r = await fetch('/api/sim/live?' + qs);
+    const d = await r.json();
+
+    authoritative = d.savings;          // monotonic realised (banked) savings
+    ratePerSec = d.savings_per_second_real;   // >= 0, only grows at the peak
+    // Snap UP if we've fallen behind the banked figure; never snap down (the
+    // headline is a high-water mark, so let a tiny lead coast — it can't undo it).
+    if (authoritative - displayed > 0.5) displayed = authoritative;
+
+    document.getElementById('engine').textContent = d.engine;
+    document.getElementById('rate-h').textContent = fmtMoney(d.savings_rate_per_hour) + '/h';
+    document.getElementById('rate-s').textContent = fmtMoney(d.savings_per_second_real,3) + '/s';
+    document.getElementById('gap-now').textContent = fmtMoney(d.savings_gap_now);
+    document.getElementById('pct').textContent = d.savings_pct + '%';
+
+    const reason = d.decision_reason || '';
+    document.getElementById('dec-reason').textContent = reason;
+    const icon = reason.startsWith('Charging')||reason.startsWith('Solar') ? '🔌'
+               : reason.startsWith('Discharging') ? '🔋' : '⏸️';
+    document.getElementById('dec-icon').textContent = icon;
+
+    document.getElementById('me-soc').textContent = d.opt_soc_pct + '%';
+    document.getElementById('me-bar').style.width = d.opt_soc_pct + '%';
+    const ba = d.opt_battery_kw;
+    document.getElementById('me-batt').textContent =
+      ba > 0.5 ? `↑ charging ${ba.toFixed(0)} kW` : ba < -0.5 ? `↓ discharging ${(-ba).toFixed(0)} kW` : 'idle';
+    document.getElementById('me-cost').textContent = fmtMoney(d.opt_cost);
+
+    document.getElementById('base-soc').textContent = d.base_soc_pct + '%';
+    document.getElementById('base-bar').style.width = d.base_soc_pct + '%';
+    document.getElementById('base-cost').textContent = fmtMoney(d.base_cost);
+
+    document.getElementById('clock').textContent = d.sim_clock + '  (day ' + d.sim_day + ')';
+    document.getElementById('price').textContent = d.price.toFixed(3) + ' €';
+    document.getElementById('solar').textContent = d.solar_kw.toFixed(0) + ' kW';
+    document.getElementById('load').textContent = d.load_kw.toFixed(0) + ' kW';
+    document.getElementById('speednote').textContent =
+      `Simulating at ${(d.speed*3600).toFixed(0)}× real time · validated engine · decisions checked vs an independent brute-force optimum.`;
+  }catch(e){}
+}
+
+function animate(now){
+  const dt = (now - lastFrame)/1000; lastFrame = now;
+  displayed += ratePerSec * dt;                 // tick smoothly between polls (rate >= 0)
+  // Only ease UPWARD toward the banked figure — the headline is realised
+  // savings, a high-water mark, so it must never tick down between polls.
+  if (authoritative > displayed) displayed += (authoritative - displayed) * 0.02;
+  document.getElementById('savings').textContent = fmtMoney(Math.max(displayed,0));
+  requestAnimationFrame(animate);
+}
+
+document.getElementById('reset').onclick = async () => {
+  await fetch('/api/sim/reset?' + qs, {method:'POST'});
+  displayed = 0; authoritative = 0; ratePerSec = 0;
+};
+
+poll();
+setInterval(poll, 1000);
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

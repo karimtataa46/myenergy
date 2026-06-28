@@ -1,0 +1,11 @@
+# Render.com blueprint — deploys the whole app (backend + frontend) on a
+# Python web service. Push this repo to GitHub, then in Render: New > Blueprint
+# and point it at the repo. Render reads this file automatically.
+services:
+  - type: web
+    name: myenergy
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --loop asyncio --http h11
+    autoDeploy: true
