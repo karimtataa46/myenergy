@@ -9,11 +9,11 @@ weather/price forecast and plans ahead, so it banks cheap energy before an expen
 peak instead of reacting once the peak has already hit.
 
 On a simulated mid-sized factory it cuts the electricity bill by ~€740/month vs a
-standard reactive controller on the exact same hardware** — and more under dynamic
+standard reactive controller on the exact same hardware** - and more under dynamic
 (spot) pricing, where its optimiser pulls further ahead of any hand-written rules.
 
-> Status: working **prototype**. The "facility" is a physically-realistic
-> simulation, not yet real hardware — but the decision engine, optimiser and
+> Status: working prototype. The "facility" is a physically-realistic
+> simulation, not yet real hardware - but the decision engine, optimiser and
 > savings maths are all real and independently tested.
 
 ---
@@ -45,7 +45,7 @@ simulation/      the validated, tested core
   └─ test_*.py      tests (see below)
 ```
 
-**The decision engine is the product.** The simulation just gives it a realistic
+The decision engine is the product.** The simulation just gives it a realistic
 world to act in. Savings are always measured as the *gap* between smart and dumb
 control of identical hardware — never an absolute number that the solar panels
 would have produced anyway.
