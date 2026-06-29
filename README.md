@@ -3,12 +3,12 @@
 **Predictive energy management for factories with solar + battery.**
 
 myEnergy connects to a facility's existing solar inverter, battery and grid meter
-and decides — every few seconds — when to charge, discharge, hold or pull from the
-grid. Unlike a normal *reactive* controller, it is *predictive*: it reads the
+and decides - every few seconds - when to charge, discharge, hold or pull from the
+grid. Unlike a normal *reactive* controller, it is predictive: it reads the
 weather/price forecast and plans ahead, so it banks cheap energy before an expensive
 peak instead of reacting once the peak has already hit.
 
-On a simulated mid-sized factory it cuts the electricity bill by **~€740/month vs a
+On a simulated mid-sized factory it cuts the electricity bill by ~€740/month vs a
 standard reactive controller on the exact same hardware** — and more under dynamic
 (spot) pricing, where its optimiser pulls further ahead of any hand-written rules.
 
