@@ -2,6 +2,15 @@
 
 **Predictive energy management for factories with solar + battery.**
 
+## 🔗 Live demo — no install needed
+
+### 👉 **[Open the live app](https://myenergy.onrender.com)** &nbsp;·&nbsp; **[Live savings session](https://myenergy.onrender.com/sim)**
+
+Just click and explore it in your browser — nothing to clone or install.
+*(Hosted on a free tier, so if it's been idle the first load takes ~30–60s to wake up, then it's instant.)*
+
+---
+
 myEnergy connects to a facility's existing solar inverter, battery and grid meter
 and decides - every few seconds - when to charge, discharge, hold or pull from the
 grid. Unlike a normal *reactive* controller, it is predictive: it reads the
