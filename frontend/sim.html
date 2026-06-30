@@ -3,193 +3,274 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>myEnergy — Live Savings Session</title>
+<title>myEnergy — Live Session</title>
 <style>
   :root{
-    --bg:#0d0f14; --surface:#161a24; --surface2:#1e2433; --border:#2a3147;
-    --text:#e2e8f0; --muted:#64748b; --green:#22c55e; --solar:#f59e0b;
-    --battery:#10b981; --blue:#3b82f6; --red:#ef4444; --violet:#8b5cf6;
+    --bg:#060708; --card:#101216; --card2:#171A20; --border:#23272F;
+    --text:#F4F6F8; --muted:#6E7787;
+    --green:#15E6A0; --amber:#FFB72B; --coral:#FF4E6A; --cyan:#36D7F2; --violet:#A472FF;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;min-height:100vh}
-  header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface)}
-  .logo{font-size:20px;font-weight:700}.logo span{color:var(--solar)}
-  .nav{display:flex;gap:10px;align-items:center}
-  .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-family:inherit;font-size:12px;cursor:pointer;text-decoration:none}
+  body{background:var(--bg);color:var(--text);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(900px 500px at 50% -8%, rgba(21,230,160,0.10), transparent 70%);
+    background-attachment:fixed}
+  ::-webkit-scrollbar{width:0}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border)}
+  .logo{font-size:18px;font-weight:800;letter-spacing:-.5px}.logo span{color:var(--green)}
+  .btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;
+    padding:8px 13px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none}
   .btn:hover{border-color:var(--muted)}
-  .engine-badge{font-size:11px;color:var(--green);background:#10241c;border:1px solid #1f3d30;border-radius:20px;padding:5px 12px}
-  .wrap{max-width:1100px;margin:0 auto;padding:24px 28px;display:flex;flex-direction:column;gap:18px}
+  main{max-width:600px;margin:0 auto;padding:18px;display:flex;flex-direction:column;gap:16px}
+  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px}
 
-  .hero{background:linear-gradient(135deg,#10241c 0%,#0f1a2e 100%);border:1px solid #1f3d30;border-radius:16px;padding:30px 34px;text-align:center}
-  .hero-label{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#4ade80}
-  .hero-amount{font-size:72px;font-weight:800;color:var(--green);line-height:1.05;margin:6px 0;font-variant-numeric:tabular-nums}
-  .hero-sub{font-size:13px;color:var(--muted)}
-  .rate-chips{display:flex;gap:12px;justify-content:center;margin-top:16px;flex-wrap:wrap}
-  .chip{background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px}
-  .chip b{color:var(--green)}
+  /* time-lapse context bar */
+  .lapse{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 16px}
+  .lapse .clock{font-size:15px;font-weight:800;letter-spacing:-.3px}
+  .lapse .phase{font-size:12px;color:var(--muted);margin-top:2px}
+  .speedbadge{font-size:11px;font-weight:800;color:#06120d;background:var(--green);border-radius:20px;padding:5px 11px}
+  .speedbadge.paused{background:var(--coral);color:#fff}
 
-  .decision{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--violet);border-radius:12px;padding:18px 22px;display:flex;align-items:center;gap:16px}
-  .decision .icon{font-size:30px}
-  .decision .body{flex:1}
-  .decision .title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--violet);margin-bottom:4px}
-  .decision .reason{font-size:15px;line-height:1.5}
-  .audit{font-size:11px;color:var(--green);background:#10241c;border:1px solid #1f3d30;border-radius:8px;padding:6px 12px;white-space:nowrap}
+  /* hero */
+  .hero{text-align:center;padding:26px 20px}
+  .hero .lbl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#4ade80;font-weight:700}
+  .hero .amt{font-size:64px;font-weight:800;letter-spacing:-3px;color:var(--green);line-height:1;margin:8px 0 4px;font-variant-numeric:tabular-nums}
+  .hero .sub{font-size:12.5px;color:var(--muted)}
+  .chips{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  .chip{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px 14px;font-size:12.5px}
+  .chip b{font-variant-numeric:tabular-nums}
+  .chip .g{color:var(--green)} .chip .a{color:var(--amber)} .chip .m{color:var(--muted)}
 
-  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
-  .card.me{border-top:3px solid var(--green)}
-  .card.base{border-top:3px solid var(--red)}
-  .card h3{font-size:13px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
-  .card h3 .tag{font-size:10px;color:var(--muted);font-weight:400}
-  .metric{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;color:var(--muted)}
-  .metric b{color:var(--text);font-variant-numeric:tabular-nums}
-  .soc-track{height:10px;background:var(--surface2);border-radius:5px;overflow:hidden;margin:8px 0 4px}
-  .soc-fill{height:100%;border-radius:5px;transition:width .5s}
+  /* controls */
+  .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+  .seg{display:flex;background:var(--card2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--muted);font-family:inherit;font-size:12px;font-weight:700;
+    padding:9px 14px;cursor:pointer}
+  .seg button.on{background:var(--green);color:#06120d}
+  .ctrl-btn{display:flex;align-items:center;gap:7px;background:var(--card2);border:1px solid var(--border);
+    color:var(--text);border-radius:12px;padding:9px 15px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .ctrl-btn:hover{border-color:var(--muted)}
 
-  .context{display:flex;gap:10px;flex-wrap:wrap}
-  .ctx{flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px}
-  .ctx .k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
-  .ctx .v{font-size:18px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  /* day timeline — explains WHEN the saving happens */
+  .timeline-wrap{margin-top:4px}
+  .tl-track{position:relative;height:30px;border-radius:10px;overflow:hidden;display:flex}
+  .tl-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.3px}
+  .tl-marker{position:absolute;top:-4px;width:3px;height:38px;background:#fff;border-radius:3px;box-shadow:0 0 8px #fff;transition:left .6s cubic-bezier(.2,.7,.2,1)}
+  .tl-ticks{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:5px}
+
+  /* decision */
+  .decision{display:flex;align-items:center;gap:14px;border-left:4px solid var(--violet)}
+  .dec-ic{font-size:26px}
+  .dec-t{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--violet);font-weight:800;margin-bottom:4px}
+  .dec-r{font-size:13.5px;line-height:1.5}
+  .audit{font-size:10px;color:var(--green);background:#10241c;border:1px solid #1f3d30;border-radius:8px;padding:5px 10px;white-space:nowrap;font-weight:700}
+
+  /* compare rings */
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .mini{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
+  .ring{position:relative;width:96px;height:96px}.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+  .rbg{fill:none;stroke:#171b21;stroke-width:9}
+  .rfg{fill:none;stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.2,.7,.2,1)}
+  .rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .rv{font-size:21px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  .ru{font-size:9px;color:var(--muted)}
+  .cmp .name{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:700}
+  .cmp .cost{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .ctxrow{display:flex;gap:10px}
+  .ctx{flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;text-align:center}
+  .ctx .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .ctx .v{font-size:17px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
   .note{font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">my<span>Energy</span> · Live Session</div>
-  <div class="nav">
-    <span class="engine-badge" id="engine">engine…</span>
-    <button class="btn" id="reset">⟳ New session</button>
-    <a class="btn" href="/">← Dashboard</a>
-  </div>
+  <a class="btn" href="/">← Dashboard</a>
 </header>
 
-<div class="wrap">
-  <div class="hero">
-    <div class="hero-label">💶 Saved this session (banked)</div>
-    <div class="hero-amount" id="savings">€0.00</div>
-    <div class="hero-sub">vs. a dumb reactive controller — same factory, same hardware, same weather</div>
-    <div class="rate-chips">
-      <div class="chip">rate now: <b id="rate-h">€0/h</b></div>
-      <div class="chip">live: <b id="rate-s">€0/s</b></div>
-      <div class="chip">current gap: <b id="gap-now">€0.00</b></div>
-      <div class="chip">cut bill by <b id="pct">0%</b></div>
+<main>
+  <!-- explainer -->
+  <div class="note" style="margin-top:2px">
+    This <b style="color:var(--text)">replays a real factory at high speed</b> so you can watch days of
+    decisions in minutes. <b style="color:var(--green)">myEnergy</b> (the optimiser) runs against a
+    <b style="color:var(--coral)">dumb controller</b> on identical hardware — the gap between them is your saving.
+  </div>
+
+  <!-- time-lapse bar -->
+  <div class="lapse">
+    <div>
+      <div class="clock" id="clock">—</div>
+      <div class="phase" id="phase">—</div>
+    </div>
+    <div class="speedbadge" id="speedbadge">▶ —× real-time</div>
+  </div>
+
+  <!-- hero -->
+  <div class="card hero">
+    <div class="lbl">💶 Saved this session</div>
+    <div class="amt" id="savings">€0.00</div>
+    <div class="sub" id="sub">over 0.0 simulated days · vs a dumb controller, same hardware</div>
+    <div class="chips">
+      <div class="chip">saving rate: <b class="g" id="rate-day">€0/day</b></div>
+      <div class="chip">of the bill: <b class="a" id="pct">0%</b></div>
+      <div class="chip">live gap: <b class="m" id="gap">€0.00</b></div>
     </div>
   </div>
 
-  <div class="decision">
-    <div class="icon" id="dec-icon">🧠</div>
-    <div class="body">
-      <div class="title">myEnergy decision right now</div>
-      <div class="reason" id="dec-reason">starting…</div>
+  <!-- controls -->
+  <div class="controls">
+    <button class="ctrl-btn" id="pause">⏸ Pause</button>
+    <div class="seg" id="speed">
+      <button data-s="0.4">Slow</button>
+      <button data-s="1" class="on">Normal</button>
+      <button data-s="2.5">Fast</button>
     </div>
-    <div class="audit" id="audit">✓ verified optimal</div>
+    <button class="ctrl-btn" id="reset">⟳ Restart</button>
   </div>
 
-  <div class="cols">
-    <div class="card me">
-      <h3>🟢 myEnergy <span class="tag">LP optimiser</span></h3>
-      <div class="metric"><span>Battery</span><b id="me-soc">—%</b></div>
-      <div class="soc-track"><div class="soc-fill" id="me-bar" style="width:0%;background:var(--green)"></div></div>
-      <div class="metric"><span>Battery action</span><b id="me-batt">—</b></div>
-      <div class="metric"><span>Cost this session</span><b id="me-cost">€—</b></div>
+  <!-- day timeline -->
+  <div class="card timeline-wrap">
+    <div class="eyebrow" style="margin-bottom:8px">Where we are in the day — savings are made at the evening peak</div>
+    <div class="tl-track">
+      <div class="tl-seg" style="width:25%;background:#13233a">NIGHT</div>
+      <div class="tl-seg" style="width:21%;background:#1c2230">MORNING</div>
+      <div class="tl-seg" style="width:21%;background:#3a2f12">MIDDAY ☀</div>
+      <div class="tl-seg" style="width:25%;background:#3a1622">EVENING PEAK €</div>
+      <div class="tl-seg" style="width:8%;background:#13233a">NIGHT</div>
+      <div class="tl-marker" id="tl-marker" style="left:58%"></div>
     </div>
-    <div class="card base">
-      <h3>🔴 Baseline <span class="tag">reactive, no foresight</span></h3>
-      <div class="metric"><span>Battery</span><b id="base-soc">—%</b></div>
-      <div class="soc-track"><div class="soc-fill" id="base-bar" style="width:0%;background:var(--red)"></div></div>
-      <div class="metric"><span>Battery action</span><b>reacts only</b></div>
-      <div class="metric"><span>Cost this session</span><b id="base-cost">€—</b></div>
+    <div class="tl-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+  </div>
+
+  <!-- decision -->
+  <div class="card decision">
+    <div class="dec-ic" id="dec-ic">🧠</div>
+    <div style="flex:1">
+      <div class="dec-t">myEnergy decision now</div>
+      <div class="dec-r" id="dec-r">starting…</div>
+    </div>
+    <div class="audit">✓ optimal</div>
+  </div>
+
+  <!-- compare -->
+  <div class="card cmp">
+    <div class="mini">
+      <div class="ring"><svg viewBox="0 0 96 96"><circle class="rbg" cx="48" cy="48" r="40"></circle>
+        <circle class="rfg" id="ring-me" cx="48" cy="48" r="40" style="stroke:var(--green)"></circle></svg>
+        <div class="rc"><div class="rv" id="me-soc">—</div><div class="ru">battery %</div></div></div>
+      <div class="name" style="color:var(--green)">🟢 myEnergy</div>
+      <div class="cost">cost so far: <b id="me-cost">€—</b></div>
+    </div>
+    <div class="mini">
+      <div class="ring"><svg viewBox="0 0 96 96"><circle class="rbg" cx="48" cy="48" r="40"></circle>
+        <circle class="rfg" id="ring-base" cx="48" cy="48" r="40" style="stroke:var(--coral)"></circle></svg>
+        <div class="rc"><div class="rv" id="base-soc">—</div><div class="ru">battery %</div></div></div>
+      <div class="name" style="color:var(--coral)">🔴 Baseline</div>
+      <div class="cost">cost so far: <b id="base-cost">€—</b></div>
     </div>
   </div>
 
-  <div class="context">
-    <div class="ctx"><div class="k">Sim clock</div><div class="v" id="clock">—</div></div>
-    <div class="ctx"><div class="k">Spot price</div><div class="v" id="price">— €</div></div>
-    <div class="ctx"><div class="k">Solar</div><div class="v" id="solar">— kW</div></div>
-    <div class="ctx"><div class="k">Load</div><div class="v" id="load">— kW</div></div>
+  <!-- context -->
+  <div class="ctxrow">
+    <div class="ctx"><div class="k">Spot price</div><div class="v" id="price">—</div></div>
+    <div class="ctx"><div class="k">Solar</div><div class="v" id="solar">—</div></div>
+    <div class="ctx"><div class="k">Load</div><div class="v" id="load">—</div></div>
   </div>
 
-  <div class="note" id="speednote">
-    Running the validated simulation engine. Decisions are checked against an independent
-    brute-force optimum (see test_decisions.py).
-  </div>
-</div>
+  <div class="note" id="enginenote">validated engine · decisions checked vs an independent brute-force optimum</div>
+</main>
 
 <script>
-let displayed = 0;      // smoothly-animated savings
-let authoritative = 0;  // last value from server
-let ratePerSec = 0;     // €/real-second to interpolate between polls
-let lastFrame = performance.now();
+const SID = (crypto.randomUUID ? crypto.randomUUID() : 'sid-'+Date.now()+Math.random());
+let speed = 1, paused = false;
+let displayed = 0, target = 0;          // eased counter (no free-run spin)
 
-// A fresh session id per page load → the server gives THIS viewer its own
-// LiveSim that starts near €0, instead of a shared global mid-session.
-const SESSION_ID = (crypto.randomUUID ? crypto.randomUUID()
-                    : 'sid-' + Date.now() + '-' + Math.random().toString(36).slice(2));
-const qs = 'session=' + encodeURIComponent(SESSION_ID);
-
-function fmtMoney(v, dp=2){ return '€' + v.toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp}); }
+const $ = id => document.getElementById(id);
+const money = (v,dp=2)=>'€'+v.toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
+function setRing(el,pct){const r=el.r.baseVal.value,c=2*Math.PI*r;el.style.strokeDasharray=c;
+  el.style.strokeDashoffset=c*(1-Math.max(0,Math.min(100,pct))/100);}
 
 async function poll(){
+  if(paused) return;
   try{
-    const r = await fetch('/api/sim/live?' + qs);
+    const r = await fetch(`/api/sim/live?session=${SID}&speed=${speed}`);
     const d = await r.json();
+    target = d.savings;                                   // eased toward, never free-run
 
-    authoritative = d.savings;          // monotonic realised (banked) savings
-    ratePerSec = d.savings_per_second_real;   // >= 0, only grows at the peak
-    // Snap UP if we've fallen behind the banked figure; never snap down (the
-    // headline is a high-water mark, so let a tiny lead coast — it can't undo it).
-    if (authoritative - displayed > 0.5) displayed = authoritative;
+    $('clock').textContent = `${d.sim_clock}  ·  day ${d.sim_day}`;
+    $('phase').textContent = d.phase;
+    $('speedbadge').textContent = `▶ ${d.sim_speed_x.toLocaleString()}× real-time`;
+    $('speedbadge').classList.remove('paused');
 
-    document.getElementById('engine').textContent = d.engine;
-    document.getElementById('rate-h').textContent = fmtMoney(d.savings_rate_per_hour) + '/h';
-    document.getElementById('rate-s').textContent = fmtMoney(d.savings_per_second_real,3) + '/s';
-    document.getElementById('gap-now').textContent = fmtMoney(d.savings_gap_now);
-    document.getElementById('pct').textContent = d.savings_pct + '%';
+    const simDays = d.session_hours / 24;          // time since the counter started
+    $('sub').textContent = `over ${simDays.toFixed(1)} simulated days · vs a dumb controller, same hardware`;
+    // Average saving per day so far — always positive and stable, unlike the
+    // jittery instantaneous rate (which dips negative while the battery charges).
+    const avgDay = simDays > 0.3 ? d.savings / simDays : null;
+    $('rate-day').textContent = avgDay != null ? money(avgDay, 0) + '/day' : 'warming up…';
+    $('pct').textContent = d.savings_pct+'%';
+    $('gap').textContent = money(d.savings_gap_now);
 
-    const reason = d.decision_reason || '';
-    document.getElementById('dec-reason').textContent = reason;
-    const icon = reason.startsWith('Charging')||reason.startsWith('Solar') ? '🔌'
-               : reason.startsWith('Discharging') ? '🔋' : '⏸️';
-    document.getElementById('dec-icon').textContent = icon;
+    // day marker
+    $('tl-marker').style.left = (d.hour_of_day/24*100)+'%';
 
-    document.getElementById('me-soc').textContent = d.opt_soc_pct + '%';
-    document.getElementById('me-bar').style.width = d.opt_soc_pct + '%';
-    const ba = d.opt_battery_kw;
-    document.getElementById('me-batt').textContent =
-      ba > 0.5 ? `↑ charging ${ba.toFixed(0)} kW` : ba < -0.5 ? `↓ discharging ${(-ba).toFixed(0)} kW` : 'idle';
-    document.getElementById('me-cost').textContent = fmtMoney(d.opt_cost);
+    // decision
+    const reason = d.decision_reason||'';
+    $('dec-r').textContent = reason;
+    $('dec-ic').textContent = reason.startsWith('Charging')||reason.startsWith('Solar')?'🔌'
+                            : reason.startsWith('Discharging')?'🔋':'⏸️';
 
-    document.getElementById('base-soc').textContent = d.base_soc_pct + '%';
-    document.getElementById('base-bar').style.width = d.base_soc_pct + '%';
-    document.getElementById('base-cost').textContent = fmtMoney(d.base_cost);
+    // compare
+    setRing($('ring-me'), d.opt_soc_pct); $('me-soc').textContent=Math.round(d.opt_soc_pct);
+    setRing($('ring-base'), d.base_soc_pct); $('base-soc').textContent=Math.round(d.base_soc_pct);
+    $('me-cost').textContent = money(d.opt_cost,1);
+    $('base-cost').textContent = money(d.base_cost,1);
 
-    document.getElementById('clock').textContent = d.sim_clock + '  (day ' + d.sim_day + ')';
-    document.getElementById('price').textContent = d.price.toFixed(3) + ' €';
-    document.getElementById('solar').textContent = d.solar_kw.toFixed(0) + ' kW';
-    document.getElementById('load').textContent = d.load_kw.toFixed(0) + ' kW';
-    document.getElementById('speednote').textContent =
-      `Simulating at ${(d.speed*3600).toFixed(0)}× real time · validated engine · decisions checked vs an independent brute-force optimum.`;
+    $('price').textContent = d.price.toFixed(2)+' €';
+    $('solar').textContent = d.solar_kw.toFixed(0)+' kW';
+    $('load').textContent = d.load_kw.toFixed(0)+' kW';
+    $('enginenote').textContent = `${d.engine} · decisions checked vs an independent brute-force optimum`;
   }catch(e){}
 }
 
-function animate(now){
-  const dt = (now - lastFrame)/1000; lastFrame = now;
-  displayed += ratePerSec * dt;                 // tick smoothly between polls (rate >= 0)
-  // Only ease UPWARD toward the banked figure — the headline is realised
-  // savings, a high-water mark, so it must never tick down between polls.
-  if (authoritative > displayed) displayed += (authoritative - displayed) * 0.02;
-  document.getElementById('savings').textContent = fmtMoney(Math.max(displayed,0));
+// calm animation: ease displayed toward target (no per-frame rate spin).
+// If we've fallen far behind (e.g. tab was backgrounded and rAF paused), snap
+// most of the way so the counter doesn't crawl for ages on refocus.
+function animate(){
+  const diff = target - displayed;
+  if(Math.abs(diff) > 15) displayed = target - Math.sign(diff)*5;
+  displayed += (target - displayed) * 0.10;
+  if(Math.abs(target-displayed) < 0.005) displayed = target;
+  $('savings').textContent = money(Math.max(displayed,0));
   requestAnimationFrame(animate);
 }
+// On refocus, jump straight to the real value (no long catch-up crawl).
+document.addEventListener('visibilitychange', () => { if(!document.hidden) displayed = target; });
 
-document.getElementById('reset').onclick = async () => {
-  await fetch('/api/sim/reset?' + qs, {method:'POST'});
-  displayed = 0; authoritative = 0; ratePerSec = 0;
+// controls
+$('pause').onclick = () => {
+  paused = !paused;
+  $('pause').textContent = paused ? '▶ Play' : '⏸ Pause';
+  if(paused) $('speedbadge').textContent = '⏸ paused', $('speedbadge').classList.add('paused');
+};
+document.querySelectorAll('#speed button').forEach(b=>{
+  b.onclick = () => {
+    speed = parseFloat(b.dataset.s);
+    document.querySelectorAll('#speed button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+  };
+});
+$('reset').onclick = async () => {
+  await fetch(`/api/sim/reset?session=${SID}`,{method:'POST'});
+  displayed = 0; target = 0;
 };
 
-poll();
-setInterval(poll, 1000);
-requestAnimationFrame(animate);
+poll(); setInterval(poll, 1000); requestAnimationFrame(animate);
 </script>
 </body>
 </html>

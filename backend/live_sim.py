@@ -40,11 +40,21 @@ except Exception as e:  # pragma: no cover
     _HAVE_LP = False
     ENGINE = f"rule-based fallback ({e.__class__.__name__})"
 
-SIM_SPEED = 0.35          # simulated hours per real second (1 sim-day ≈ 68 real s)
+SIM_SPEED = 0.13          # base simulated hours per real second at 1x speed (1 sim-day ≈ 3 min)
 MAX_REAL_DT = 1.5         # cap per tick so a backgrounded tab doesn't jump
 SIM_DAYS = 60
-WARMUP_HOURS = 41         # warm the battery + start the session at ~17:00 (peak payoff begins in seconds)
+WARMUP_HOURS = 38         # start the session ~14:00 — a calm afternoon lead-in before the evening peak
 SESSION_START = datetime.datetime(2026, 6, 1, 0, 0)
+
+
+def _phase(hour: int) -> str:
+    if hour < 6 or hour >= 22:
+        return "Night · cheap grid"
+    if hour < 11:
+        return "Morning ramp"
+    if hour < 16:
+        return "Midday · solar high"
+    return "Evening peak · pricey"
 
 
 class LiveSim:
@@ -75,6 +85,7 @@ class LiveSim:
             self.realized_savings = 0.0
             self._cache = None
             self._last_wall = time.time()
+            self._speed_mult = 1.0
 
             # Warm-up: advance the battery into its steady daily rhythm, then
             # zero the counters so the live session starts from a fair baseline
@@ -171,12 +182,13 @@ class LiveSim:
                 self.base_soc = self._cache["base_soc_end"]
                 self._cache = None
 
-    def tick(self):
+    def tick(self, speed_mult=1.0):
         with self._lock:
             now = time.time()
             real_dt = min(now - self._last_wall, MAX_REAL_DT)
             self._last_wall = now
-            self._integrate(real_dt * SIM_SPEED)
+            self._speed_mult = speed_mult
+            self._integrate(real_dt * SIM_SPEED * speed_mult)
             return self._state()
 
     def _state(self):
@@ -190,10 +202,22 @@ class LiveSim:
         # ticks down. The raw instantaneous rate is still reported separately.
         realized_rate_per_h = rate_per_h if (rate_per_h > 0 and gap >= realized) else 0.0
         clock = SESSION_START + datetime.timedelta(hours=self.sim_t)
+        speed_mult = getattr(self, "_speed_mult", 1.0)
+        eff_speed = SIM_SPEED * speed_mult                   # sim-hours per real second
+        # Average €/day at the current instantaneous rate — the honest, calm
+        # framing of "how fast you save" (vs the accelerated on-screen counter).
+        rate_per_day = round(rate_per_h * 24, 1)
         return {
             "engine": ENGINE,
             "sim_clock": clock.strftime("%a %d %b, %H:%M"),
             "sim_day": int(self.sim_t // 24) + 1,
+            "hour_of_day": clock.hour,
+            # Elapsed time SINCE the counter started (after warm-up) — use this
+            # for "X simulated days" and the average rate, NOT the absolute clock.
+            "session_hours": round(max(0.0, self.sim_t - WARMUP_HOURS), 2),
+            "phase": _phase(clock.hour),
+            "sim_speed_x": round(eff_speed * 3600),          # how many × real-time
+            "rate_per_day_eur": rate_per_day,
             "speed": SIM_SPEED,
             "price": round(c["price"], 3),
             "solar_kw": round(c["solar"], 1),
@@ -210,7 +234,7 @@ class LiveSim:
             "savings_gap_now": round(gap, 4),
             "savings_rate_per_hour": round(rate_per_h, 4),
             # Per-second increment the headline animates with — never negative.
-            "savings_per_second_real": round(realized_rate_per_h * SIM_SPEED, 5),
+            "savings_per_second_real": round(realized_rate_per_h * eff_speed, 5),
             "savings_pct": round(realized / self.base_cost * 100, 1) if self.base_cost > 0 else 0.0,
         }
 
@@ -246,9 +270,10 @@ def _get_session(session_id: Optional[str]) -> "LiveSim":
         return sim
 
 
-def tick(session_id: Optional[str] = None) -> dict:
+def tick(session_id: Optional[str] = None, speed_mult: float = 1.0) -> dict:
     """Advance the caller's own session and return its state."""
-    return _get_session(session_id).tick()
+    speed_mult = max(0.1, min(5.0, speed_mult))   # clamp to a sane range
+    return _get_session(session_id).tick(speed_mult)
 
 
 def reset(session_id: Optional[str] = None) -> None:

@@ -333,9 +333,13 @@ async function fetchLive(){
     const tag=document.getElementById('hero-tag');
     tag.textContent=selfPct>=66?'SELF-POWERED':selfPct>=33?'PARTLY GRID':'GRID-RELIANT';
     tag.style.color=hc;
-    document.getElementById('hero-caption').textContent=
-      selfPct>=99?'Running entirely on solar + battery — zero grid draw right now.'
-      :`${Math.round(selfPct)}% of demand met without the grid · ${fmt(imp)} kW imported.`;
+    // Break down WHERE the demand is being met from, so "self-powered" isn't
+    // misread as "solar" — when the sun is down the battery carries the load.
+    const battDis = Math.max(-(d.battery_kw||0), 0);
+    const solarToLoad = Math.min(d.solar_kw||0, cons);
+    const gridBit = imp > 0.1 ? ` · ⚡ ${fmt(imp,0)} kW grid` : '';
+    document.getElementById('hero-caption').innerHTML =
+      `met without the grid &nbsp;·&nbsp; ☀️ ${fmt(solarToLoad,0)} kW solar &nbsp;+&nbsp; 🔋 ${fmt(battDis,0)} kW battery${gridBit}`;
 
     // BATTERY ring
     const soc=d.battery_soc||0, bc=battColor(soc);

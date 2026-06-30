@@ -71,7 +71,10 @@ async def _control_loop():
             with _forecast_lock:
                 fc = forecast_cache[:]
 
-            solar = facility.get_solar()
+            # Live solar from the REAL weather forecast (clouds + time of day),
+            # not a synthetic clear-sky curve. Falls back to the sim if offline.
+            current_solar = weather_module.get_current_solar(fc)
+            solar = facility.get_solar(override_kw=current_solar)
             battery = facility.get_battery()
             consumption = facility.get_consumption()
             upcoming = weather_module.get_upcoming_solar(fc, from_now_hours=2) if fc else 0.0
@@ -196,9 +199,9 @@ async def sim_page():
 
 
 @app.get("/api/sim/live")
-async def sim_live(session: Optional[str] = None):
+async def sim_live(session: Optional[str] = None, speed: float = 1.0):
     """Advance the caller's live session and return its current state."""
-    return await asyncio.to_thread(live_sim_module.tick, session)
+    return await asyncio.to_thread(live_sim_module.tick, session, speed)
 
 
 @app.post("/api/sim/reset")

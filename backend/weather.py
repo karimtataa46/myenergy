@@ -113,3 +113,26 @@ def get_upcoming_solar(
     if not upcoming:
         return 0.0
     return sum(f.estimated_solar_kw for f in upcoming) / len(upcoming)
+
+
+def get_current_solar(forecast: list[WeatherForecastHour]):
+    """
+    Solar output RIGHT NOW from the real weather forecast — accounts for clouds
+    and the actual time of day, interpolated between the surrounding hours so it
+    moves smoothly. Returns None if no forecast is available (caller falls back
+    to the clear-sky model). This is what makes the live solar reading honest:
+    on a cloudy evening it reads low, not full clear-sky sun.
+    """
+    if not forecast:
+        return None
+    now = datetime.now(timezone.utc)
+    hour0 = now.replace(minute=0, second=0, microsecond=0)
+    cur = next((f for f in forecast if f.timestamp == hour0), None)
+    nxt = next((f for f in forecast if f.timestamp == hour0 + timedelta(hours=1)), None)
+    if cur is None:
+        past = [f for f in forecast if f.timestamp <= now]
+        return past[-1].estimated_solar_kw if past else None
+    if nxt is None:
+        return cur.estimated_solar_kw
+    frac = now.minute / 60.0
+    return cur.estimated_solar_kw * (1 - frac) + nxt.estimated_solar_kw * frac
