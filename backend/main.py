@@ -24,8 +24,17 @@ import simulator as sim_module
 import brain
 import savings as savings_module
 import live_sim as live_sim_module
+import estimate_service
 from live_sim import live_sim
 from brain import BrainInput
+from pydantic import BaseModel
+
+
+class EstimateIn(BaseModel):
+    city: str
+    solar_kwp: float = 100.0
+    battery_kwh: float = 200.0
+    monthly_kwh: float = 46920.0
 
 # ── Global state ─────────────────────────────────────────────────────────────
 
@@ -196,6 +205,22 @@ async def get_savings():
 @app.get("/sim")
 async def sim_page():
     return FileResponse(str(frontend_path / "sim.html"))
+
+
+# ── Per-user estimate: user enters their facility, gets their own savings ────
+
+@app.get("/estimate")
+async def estimate_page():
+    return FileResponse(str(frontend_path / "estimate.html"))
+
+
+@app.post("/api/estimate")
+async def api_estimate(inp: EstimateIn):
+    """Run the validated engine on the user's own facility inputs."""
+    return await asyncio.to_thread(
+        estimate_service.estimate_savings,
+        inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh,
+    )
 
 
 @app.get("/api/sim/live")

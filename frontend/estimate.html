@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myEnergy — Your Savings</title>
+<style>
+  :root{
+    --bg:#060708; --card:#101216; --card2:#171A20; --border:#23272F;
+    --text:#F4F6F8; --muted:#6E7787;
+    --green:#15E6A0; --amber:#FFB72B; --coral:#FF4E6A; --cyan:#36D7F2; --violet:#A472FF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(900px 500px at 50% -8%, rgba(21,230,160,0.10), transparent 70%);
+    background-attachment:fixed}
+  ::-webkit-scrollbar{width:0}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border)}
+  .logo{font-size:18px;font-weight:800;letter-spacing:-.5px}.logo span{color:var(--green)}
+  .btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;
+    padding:8px 13px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none}
+  main{max-width:600px;margin:0 auto;padding:22px 18px 90px;display:flex;flex-direction:column;gap:18px}
+  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  h1{font-size:30px;font-weight:800;letter-spacing:-1px;margin:6px 0 4px}
+  .lede{font-size:14px;color:var(--muted);line-height:1.55}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px}
+
+  /* form */
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12px;font-weight:700;letter-spacing:.3px;margin-bottom:7px}
+  .field .hint{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+  .field input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;
+    color:var(--text);font-family:inherit;font-size:16px;padding:13px 14px;outline:none}
+  .field input:focus{border-color:var(--green)}
+  .go{width:100%;background:linear-gradient(135deg,var(--green),var(--cyan));color:#06120d;border:0;
+    border-radius:14px;font-family:inherit;font-size:15px;font-weight:800;padding:15px;cursor:pointer;margin-top:4px}
+  .go:disabled{opacity:.55;cursor:default}
+  .err{color:var(--coral);font-size:13px;margin-top:10px;display:none}
+
+  /* results */
+  #results{display:none;flex-direction:column;gap:16px}
+  .hero{text-align:center;padding:26px 20px}
+  .hero .lbl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#4ade80;font-weight:700}
+  .hero .amt{font-size:60px;font-weight:800;letter-spacing:-3px;color:var(--green);line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+  .hero .sub{font-size:13px;color:var(--muted)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;text-align:center}
+  .stat .v{font-size:22px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .vs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .vs .box{background:var(--card2);border-radius:14px;padding:14px;text-align:center}
+  .vs .box .n{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .vs .box .t{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+  .facts{font-size:12.5px;color:var(--muted);line-height:1.7}
+  .facts b{color:var(--text)}
+  .note{font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
+  .loading{text-align:center;color:var(--muted);font-size:13px;display:none;padding:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">my<span>Energy</span></div>
+  <a class="btn" href="/">← Demo dashboard</a>
+</header>
+
+<main>
+  <div>
+    <div class="eyebrow">Your facility · your numbers</div>
+    <h1>See how much <span style="color:var(--green)">you'd</span> save</h1>
+    <div class="lede">Enter your site and we'll run the same optimiser on <b style="color:var(--text)">your</b> city's
+      weather and electricity price — no install, no sign-up.</div>
+  </div>
+
+  <!-- Step 4: input form -->
+  <form class="card" id="form">
+    <div class="field">
+      <label>City <span class="hint">sets your weather + electricity price automatically</span></label>
+      <input id="city" placeholder="e.g. Munich, Lyon, Krakow…" value="Munich" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Solar array <span class="hint">installed size, kWp</span></label>
+      <input id="solar" type="number" min="0" value="100">
+    </div>
+    <div class="field">
+      <label>Battery <span class="hint">usable size, kWh</span></label>
+      <input id="battery" type="number" min="1" value="200">
+    </div>
+    <div class="field">
+      <label>Monthly electricity use <span class="hint">kWh/month (from a bill)</span></label>
+      <input id="monthly" type="number" min="100" value="46920">
+    </div>
+    <button class="go" id="go" type="submit">⚡ Calculate my savings</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div class="loading" id="loading">Running the optimiser on your facility…</div>
+
+  <!-- Step 6: results -->
+  <div id="results">
+    <div class="card hero">
+      <div class="lbl">💶 myEnergy would save you</div>
+      <div class="amt" id="r-saved">€—</div>
+      <div class="sub" id="r-sub">per month · vs a standard reactive controller, same hardware</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="v" id="r-annual" style="color:var(--cyan)">€—</div><div class="l">per year</div></div>
+      <div class="stat"><div class="v" id="r-pct" style="color:var(--amber)">—%</div><div class="l">of your bill</div></div>
+      <div class="stat"><div class="v" id="r-co2" style="color:var(--green)">— kg</div><div class="l">CO₂ avoided/mo</div></div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:12px">Your monthly electricity bill</div>
+      <div class="vs">
+        <div class="box"><div class="n" style="color:var(--coral)" id="r-base">€—</div><div class="t">without myEnergy</div></div>
+        <div class="box"><div class="n" style="color:var(--green)" id="r-my">€—</div><div class="t">with myEnergy</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow" style="margin-bottom:10px">Your facility</div>
+      <div class="facts" id="r-facts"></div>
+    </div>
+
+    <div class="note">Computed with the same validated engine that powers our
+      <a href="/" style="color:var(--cyan)">demo</a> — optimal control (LP-MPC) vs a dumb baseline on identical hardware.</div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const euro = v => '€' + Math.round(v).toLocaleString();
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('err').style.display = 'none';
+  $('results').style.display = 'none';
+  $('loading').style.display = 'block';
+  $('go').disabled = true;
+
+  try {
+    const r = await fetch('/api/estimate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        city: $('city').value,
+        solar_kwp: parseFloat($('solar').value) || 0,
+        battery_kwh: parseFloat($('battery').value) || 0,
+        monthly_kwh: parseFloat($('monthly').value) || 0,
+      }),
+    });
+    const d = await r.json();
+    $('loading').style.display = 'none';
+    $('go').disabled = false;
+
+    if (d.error) { $('err').textContent = d.error; $('err').style.display = 'block'; return; }
+
+    $('r-saved').textContent = euro(d.saved_eur);
+    $('r-annual').textContent = euro(d.annual_eur);
+    $('r-pct').textContent = d.saved_pct + '%';
+    $('r-co2').textContent = Math.round(d.co2_avoided_kg).toLocaleString() + ' kg';
+    $('r-base').textContent = euro(d.baseline_eur);
+    $('r-my').textContent = euro(d.myenergy_eur);
+    $('r-facts').innerHTML =
+      `📍 <b>${d.city}, ${d.country}</b><br>` +
+      `⚡ Electricity price: <b>€${d.price_peak.toFixed(2)}</b> peak / <b>€${d.price_offpeak.toFixed(2)}</b> off-peak<br>` +
+      `☀️ Solar <b>${d.solar_kwp} kWp</b> · 🔋 Battery <b>${d.battery_kwh} kWh</b> · 🏭 <b>${d.monthly_kwh.toLocaleString()} kWh/mo</b><br>` +
+      `🌱 Renewable self-use: <b>${d.solar_fraction_pct}%</b>`;
+    $('results').style.display = 'flex';
+    $('results').scrollIntoView({behavior:'smooth', block:'start'});
+  } catch (err) {
+    $('loading').style.display = 'none';
+    $('go').disabled = false;
+    $('err').textContent = 'Something went wrong — try again.';
+    $('err').style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>
