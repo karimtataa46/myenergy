@@ -1,4 +1,4 @@
-# myEnergy — production container.
+# myEnergy  production container.
 # scipy/numpy ship prebuilt manylinux wheels for CPython 3.11, so no compilers
 # are needed on the slim base — pip just downloads wheels.
 FROM python:3.11-slim
