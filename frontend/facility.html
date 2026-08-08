@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myEnergy — Your Facility (live)</title>
+<style>
+  :root{
+    --bg:#060708; --card:#101216; --card2:#171A20; --border:#23272F;
+    --text:#F4F6F8; --muted:#6E7787;
+    --green:#15E6A0; --amber:#FFB72B; --coral:#FF4E6A; --cyan:#36D7F2; --violet:#A472FF; --yellow:#FFD23F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(900px 500px at 50% -8%, rgba(21,230,160,0.10), transparent 70%);
+    background-attachment:fixed}
+  ::-webkit-scrollbar{width:0}
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border)}
+  .logo{font-size:18px;font-weight:800;letter-spacing:-.5px}.logo span{color:var(--green)}
+  .head-right{display:flex;align-items:center;gap:10px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 13px;font-size:12px;font-weight:600;text-decoration:none}
+  main{max-width:600px;margin:0 auto;padding:16px 18px 90px;display:flex;flex-direction:column;gap:16px}
+  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+  .hero{display:flex;flex-direction:column;align-items:center;padding:14px 0 4px}
+  .hero-ring{position:relative;width:250px;height:250px}
+  .hero-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+  .ring-bg{fill:none;stroke:#171b21;stroke-width:15}
+  .ring-fg{fill:none;stroke-width:15;stroke-linecap:round;transition:stroke-dashoffset 1.4s cubic-bezier(.2,.7,.2,1),stroke .6s,filter .6s}
+  .hero-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .hero-pct{font-size:66px;font-weight:800;letter-spacing:-3px;line-height:.9;font-variant-numeric:tabular-nums}
+  .hero-pct .u{font-size:26px;font-weight:700;color:var(--muted)}
+  .hero-tag{margin-top:8px;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:800}
+  .hero-cap{margin-top:12px;font-size:13px;color:var(--muted);text-align:center;max-width:340px;line-height:1.5}
+
+  .rings{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .mini{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px 8px 14px;display:flex;flex-direction:column;align-items:center;gap:8px}
+  .mini-ring{position:relative;width:100px;height:100px}
+  .mini-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+  .mini-bg{fill:none;stroke:#171b21;stroke-width:9}
+  .mini-fg{fill:none;stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.2,.7,.2,1),stroke .5s,filter .5s}
+  .mini-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .mini-val{font-size:22px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  .mini-unit{font-size:10px;color:var(--muted);margin-top:2px}
+  .mini-name{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .mini-sub{font-size:11px;color:var(--muted)}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px}
+  .decision{display:flex;align-items:center;gap:14px;border-left:4px solid var(--violet);transition:border-color .5s}
+  .dec-ic{font-size:26px}
+  .dec-t{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--violet);font-weight:800;margin-bottom:4px}
+  .dec-r{font-size:14px;line-height:1.5}
+
+  .sv-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+  .sv-stat{background:var(--card2);border-radius:14px;padding:12px;text-align:center}
+  .sv-stat .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+  .sv-stat .l{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-top:3px}
+
+  .zrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .zrow:last-child{border-bottom:none}
+  .zname{flex:1;text-transform:capitalize}
+  .ztrack{width:90px;height:6px;background:var(--card2);border-radius:4px;overflow:hidden}
+  .zbar{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--cyan),var(--violet));transition:width .8s}
+  .zval{width:56px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .ctxrow{display:flex;gap:10px}
+  .ctx{flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;text-align:center}
+  .ctx .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .ctx .v{font-size:17px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+  .note{font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">my<span>Energy</span></div>
+  <div class="head-right"><span class="live-dot"></span><a class="btn" href="/estimate">← New estimate</a></div>
+</header>
+
+<main>
+  <div style="text-align:center">
+    <div class="eyebrow" id="fac-name">your facility · live</div>
+  </div>
+
+  <!-- self-powered hero -->
+  <section class="hero">
+    <div class="hero-ring">
+      <svg viewBox="0 0 240 240">
+        <circle class="ring-bg" cx="120" cy="120" r="105"></circle>
+        <circle class="ring-fg" id="hero-ring" cx="120" cy="120" r="105"></circle>
+      </svg>
+      <div class="hero-center">
+        <div class="hero-pct"><span id="hero-pct">—</span><span class="u">%</span></div>
+        <div class="hero-tag" id="hero-tag" style="color:var(--green)">SELF-POWERED</div>
+      </div>
+    </div>
+    <div class="hero-cap" id="hero-cap">Share of your demand met without the grid, right now.</div>
+  </section>
+
+  <!-- battery / solar / grid rings -->
+  <section class="rings">
+    <div class="mini">
+      <div class="mini-ring"><svg viewBox="0 0 100 100"><circle class="mini-bg" cx="50" cy="50" r="42"></circle>
+        <circle class="mini-fg" id="r-batt" cx="50" cy="50" r="42"></circle></svg>
+        <div class="mini-center"><div class="mini-val" id="m-batt">—</div><div class="mini-unit">%</div></div></div>
+      <div class="mini-name">Battery</div><div class="mini-sub" id="m-batt-sub">—</div>
+    </div>
+    <div class="mini">
+      <div class="mini-ring"><svg viewBox="0 0 100 100"><circle class="mini-bg" cx="50" cy="50" r="42"></circle>
+        <circle class="mini-fg" id="r-solar" cx="50" cy="50" r="42"></circle></svg>
+        <div class="mini-center"><div class="mini-val" id="m-solar">—</div><div class="mini-unit">kW</div></div></div>
+      <div class="mini-name">Solar</div><div class="mini-sub" id="m-solar-sub">—</div>
+    </div>
+    <div class="mini">
+      <div class="mini-ring"><svg viewBox="0 0 100 100"><circle class="mini-bg" cx="50" cy="50" r="42"></circle>
+        <circle class="mini-fg" id="r-grid" cx="50" cy="50" r="42"></circle></svg>
+        <div class="mini-center"><div class="mini-val" id="m-grid">—</div><div class="mini-unit">kW</div></div></div>
+      <div class="mini-name">Grid</div><div class="mini-sub" id="m-grid-sub">—</div>
+    </div>
+  </section>
+
+  <!-- decision -->
+  <section class="card decision" id="decision">
+    <div class="dec-ic" id="dec-ic">🧠</div>
+    <div style="flex:1">
+      <div class="dec-t">myEnergy decision now</div>
+      <div class="dec-r" id="dec-r">connecting…</div>
+    </div>
+  </section>
+
+  <!-- projected savings -->
+  <section class="card">
+    <div class="eyebrow">Projected savings for your site</div>
+    <div class="sv-stats">
+      <div class="sv-stat"><div class="v" id="p-month" style="color:var(--green)">€—</div><div class="l">per month</div></div>
+      <div class="sv-stat"><div class="v" id="p-year" style="color:var(--cyan)">€—</div><div class="l">per year</div></div>
+      <div class="sv-stat"><div class="v" id="p-co2" style="color:var(--amber)">— kg</div><div class="l">CO₂/mo</div></div>
+    </div>
+  </section>
+
+  <!-- zones -->
+  <section class="card">
+    <div class="eyebrow" style="margin-bottom:6px">Consumption by zone</div>
+    <div id="zones"></div>
+  </section>
+
+  <!-- context -->
+  <div class="ctxrow">
+    <div class="ctx"><div class="k">Consumption</div><div class="v" id="c-load">—</div></div>
+    <div class="ctx"><div class="k">Price now</div><div class="v" id="c-price">—</div></div>
+    <div class="ctx"><div class="k">Solar coming</div><div class="v" id="c-up">—</div></div>
+  </div>
+
+  <div class="note" id="engnote">Live · same validated optimiser (LP-MPC) on your city's real weather. Updates every 2s.</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const SID = params.get('session') || '';
+const fmt = (v,d=1)=> v!=null && !isNaN(v) ? v.toFixed(d) : '—';
+function setRing(el,pct,color){const r=el.r.baseVal.value,c=2*Math.PI*r;el.style.strokeDasharray=c;
+  el.style.strokeDashoffset=c*(1-Math.max(0,Math.min(100,pct||0))/100);
+  if(color){el.style.stroke=color;el.style.filter=`drop-shadow(0 0 7px ${color}99)`;}}
+const level = p => p>=66?'#15E6A0':p>=33?'#FFD23F':'#FF4E6A';
+const battColor = s => s<15?'#FF4E6A':s<35?'#FFD23F':'#15E6A0';
+const ICON = {solar_only:'☀️',battery_discharge:'🔋',grid_import:'⚡',battery_charge_from_solar:'🔆',battery_charge_from_grid:'🔌',export_to_grid:'📤'};
+const COLOR = {solar_only:'#FFB72B',battery_discharge:'#15E6A0',grid_import:'#FF4E6A',battery_charge_from_solar:'#FFB72B',battery_charge_from_grid:'#A472FF',export_to_grid:'#15E6A0'};
+const euro = v => '€'+Math.round(v).toLocaleString();
+
+async function poll(){
+  if(!SID){ $('dec-r').textContent='No session — start from the estimate page.'; return; }
+  try{
+    const r = await fetch('/api/facility/live?session='+encodeURIComponent(SID));
+    const d = await r.json();
+    if(d.error){ $('dec-r').textContent = d.error + ' — go back and recalculate.'; return; }
+
+    $('fac-name').textContent = `${d.facility}, ${d.country} · ${d.solar_kwp} kWp · ${d.battery_kwh} kWh · live`;
+
+    // hero self-powered
+    const sp = d.self_powered_pct, hc = level(sp);
+    setRing($('hero-ring'), sp, hc);
+    $('hero-pct').textContent = Math.round(sp);
+    const tag = $('hero-tag'); tag.style.color = hc;
+    tag.textContent = sp>=66?'SELF-POWERED':sp>=33?'PARTLY GRID':'GRID-RELIANT';
+    $('hero-cap').innerHTML = sp>=99 ? 'Running entirely on solar + battery — zero grid draw.'
+      : `met without the grid: ☀️ ${fmt(Math.min(d.solar_kw,d.consumption_kw),0)} kW solar + 🔋 ${fmt(Math.max(-d.battery_kw,0),0)} kW battery · ⚡ ${fmt(d.grid_import_kw,0)} kW grid`;
+
+    // battery ring
+    setRing($('r-batt'), d.battery_soc, battColor(d.battery_soc));
+    $('m-batt').textContent = Math.round(d.battery_soc);
+    $('m-batt-sub').textContent = d.battery_kw>0.3?`↑ ${fmt(d.battery_kw)} kW`:d.battery_kw<-0.3?`↓ ${fmt(-d.battery_kw)} kW`:'idle';
+
+    // solar ring (vs their clear-sky peak)
+    setRing($('r-solar'), Math.min(100, d.solar_kw/(d.solar_peak_kw||1)*100), '#FFB72B');
+    $('m-solar').textContent = fmt(d.solar_kw,0);
+    $('m-solar-sub').textContent = `+${fmt(d.upcoming_solar_kw,0)} kW soon`;
+
+    // grid ring
+    const net = d.grid_import_kw - d.grid_export_kw;
+    if(net>0.05){ setRing($('r-grid'), Math.min(100,net/(d.consumption_kw||1)*100), '#FF4E6A');
+      $('m-grid').textContent=fmt(net,0); $('m-grid-sub').textContent=`${fmt(d.tariff,2)} €/kWh in`; }
+    else if(net<-0.05){ setRing($('r-grid'), 50, '#15E6A0');
+      $('m-grid').textContent=fmt(-net,0); $('m-grid-sub').textContent='exporting'; }
+    else { setRing($('r-grid'),0,'#6E7787'); $('m-grid').textContent='0'; $('m-grid-sub').textContent='idle'; }
+
+    // decision
+    const a = d.action||'grid_import';
+    $('dec-ic').textContent = ICON[a]||'🧠';
+    $('dec-r').textContent = d.reason||'';
+    $('decision').style.borderLeftColor = COLOR[a]||'#A472FF';
+
+    // projected savings
+    $('p-month').textContent = euro(d.projected_monthly_eur);
+    $('p-year').textContent = euro(d.projected_annual_eur);
+    $('p-co2').textContent = Math.round(d.co2_month_kg).toLocaleString()+' kg';
+
+    // zones
+    if(d.zones){
+      $('zones').innerHTML = Object.entries(d.zones).map(([n,kw])=>{
+        const pct = d.consumption_kw>0 ? kw/d.consumption_kw*100 : 0;
+        return `<div class="zrow"><span class="zname">${n.replace(/_/g,' ')}</span>
+          <div class="ztrack"><div class="zbar" style="width:${pct}%"></div></div>
+          <span class="zval">${fmt(kw)} kW</span></div>`;}).join('');
+    }
+
+    // context
+    $('c-load').textContent = fmt(d.consumption_kw,0)+' kW';
+    $('c-price').textContent = fmt(d.tariff,2)+' €';
+    $('c-up').textContent = fmt(d.upcoming_solar_kw,0)+' kW';
+  }catch(e){}
+}
+
+poll();
+setInterval(poll, 2000);   // ← the same 2-second live tracking
+</script>
+</body>
+</html>

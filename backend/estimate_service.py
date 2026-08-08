@@ -41,14 +41,17 @@ def _sunshine_factor(latitude: float) -> float:
     return max(0.65, min(1.25, 1.0 + (48 - lat) * 0.0125))
 
 
-def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
-                     monthly_kwh: float) -> dict:
-    """Compute one facility's monthly savings from simple user inputs."""
+def build_facility(city: str, solar_kwp: float, battery_kwh: float,
+                   monthly_kwh: float):
+    """
+    Turn simple user inputs into a FacilityConfig + resolved Place + tariff.
+    Returns (cfg, place, tariff) or (None, None, None) if the city is unknown.
+    Shared by the one-shot estimate AND the live facility dashboard.
+    """
     place, tariff = pricing.lookup(city)
     if place is None:
-        return {"error": f"Couldn't find “{city}”. Try a nearby larger city."}
+        return None, None, None
 
-    # sanitise inputs to sane ranges
     solar_kwp = max(0.0, float(solar_kwp or 0))
     battery_kwh = max(1.0, float(battery_kwh or 0))       # need a battery to optimise
     monthly_kwh = max(100.0, float(monthly_kwh or _BASE_MONTHLY_KWH))
@@ -75,6 +78,18 @@ def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
         co2_peak=tariff.co2_peak, co2_offpeak=tariff.co2_offpeak,
         load_profile_kw=load_profile,
     )
+    return cfg, place, tariff
+
+
+def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
+                     monthly_kwh: float) -> dict:
+    """Compute one facility's monthly savings from simple user inputs."""
+    cfg, place, tariff = build_facility(city, solar_kwp, battery_kwh, monthly_kwh)
+    if cfg is None:
+        return {"error": f"Couldn't find “{city}”. Try a nearby larger city."}
+    solar_kwp = cfg.solar_nameplate_kw
+    battery_kwh = cfg.battery_capacity_kwh
+    monthly_kwh = sum(cfg.load_profile_kw) * DAYS
 
     weather = F.generate_month_weather(days=DAYS, seed=42)
     base = simulate(weather, reactive, cfg=cfg)     # dumb baseline

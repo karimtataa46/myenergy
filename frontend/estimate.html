@@ -91,11 +91,11 @@
       <label>Monthly electricity use <span class="hint">kWh/month (from a bill)</span></label>
       <input id="monthly" type="number" min="100" value="46920">
     </div>
-    <button class="go" id="go" type="submit">⚡ Calculate my savings</button>
+    <button class="go" id="go" type="submit">⚡ See my facility live</button>
     <div class="err" id="err"></div>
   </form>
 
-  <div class="loading" id="loading">Running the optimiser on your facility…</div>
+  <div class="loading" id="loading">Building your live dashboard…</div>
 
   <!-- Step 6: results -->
   <div id="results">
@@ -141,7 +141,8 @@ $('form').addEventListener('submit', async (e) => {
   $('go').disabled = true;
 
   try {
-    const r = await fetch('/api/estimate', {
+    // Spin up a live session for this facility, then open its live dashboard.
+    const r = await fetch('/api/facility/start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -152,24 +153,11 @@ $('form').addEventListener('submit', async (e) => {
       }),
     });
     const d = await r.json();
-    $('loading').style.display = 'none';
-    $('go').disabled = false;
-
-    if (d.error) { $('err').textContent = d.error; $('err').style.display = 'block'; return; }
-
-    $('r-saved').textContent = euro(d.saved_eur);
-    $('r-annual').textContent = euro(d.annual_eur);
-    $('r-pct').textContent = d.saved_pct + '%';
-    $('r-co2').textContent = Math.round(d.co2_avoided_kg).toLocaleString() + ' kg';
-    $('r-base').textContent = euro(d.baseline_eur);
-    $('r-my').textContent = euro(d.myenergy_eur);
-    $('r-facts').innerHTML =
-      `📍 <b>${d.city}, ${d.country}</b><br>` +
-      `⚡ Electricity price: <b>€${d.price_peak.toFixed(2)}</b> peak / <b>€${d.price_offpeak.toFixed(2)}</b> off-peak<br>` +
-      `☀️ Solar <b>${d.solar_kwp} kWp</b> · 🔋 Battery <b>${d.battery_kwh} kWh</b> · 🏭 <b>${d.monthly_kwh.toLocaleString()} kWh/mo</b><br>` +
-      `🌱 Renewable self-use: <b>${d.solar_fraction_pct}%</b>`;
-    $('results').style.display = 'flex';
-    $('results').scrollIntoView({behavior:'smooth', block:'start'});
+    if (d.error) {
+      $('loading').style.display = 'none'; $('go').disabled = false;
+      $('err').textContent = d.error; $('err').style.display = 'block'; return;
+    }
+    window.location = '/facility?session=' + encodeURIComponent(d.session);
   } catch (err) {
     $('loading').style.display = 'none';
     $('go').disabled = false;

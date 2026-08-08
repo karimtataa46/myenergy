@@ -25,6 +25,7 @@ import brain
 import savings as savings_module
 import live_sim as live_sim_module
 import estimate_service
+import facility_live
 from live_sim import live_sim
 from brain import BrainInput
 from pydantic import BaseModel
@@ -221,6 +222,33 @@ async def api_estimate(inp: EstimateIn):
         estimate_service.estimate_savings,
         inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh,
     )
+
+
+# ── Live per-user facility dashboard (the /estimate → live view) ─────────────
+
+@app.get("/facility")
+async def facility_page():
+    return FileResponse(str(frontend_path / "facility.html"))
+
+
+@app.post("/api/facility/start")
+async def api_facility_start(inp: EstimateIn):
+    """Spin up a live session for this facility; returns a session id."""
+    sid = await asyncio.to_thread(
+        facility_live.start, inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh,
+    )
+    if sid is None:
+        return {"error": f"Couldn't find “{inp.city}”. Try a nearby larger city."}
+    return {"session": sid}
+
+
+@app.get("/api/facility/live")
+async def api_facility_live(session: str):
+    """Live state for a facility session (polled every 2s by the dashboard)."""
+    state = await asyncio.to_thread(facility_live.live, session)
+    if state is None:
+        return {"error": "session expired"}
+    return state
 
 
 @app.get("/api/sim/live")
