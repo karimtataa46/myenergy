@@ -19,9 +19,9 @@ if os.path.abspath(_SIM_DIR) not in sys.path:
     sys.path.insert(0, os.path.abspath(_SIM_DIR))
 import factory as F   # noqa: E402
 
-# Default: Brussels (change to your facility's coordinates)
-DEFAULT_LAT = 50.85
-DEFAULT_LON = 4.35
+# Default test facility: Munich, Germany (change to your facility's coordinates)
+DEFAULT_LAT = 48.137
+DEFAULT_LON = 11.575
 
 # Facility panel config — installed capacity comes from the factory profile so
 # live data, forecast, and the savings model all assume ONE array size.
