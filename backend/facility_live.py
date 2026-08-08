@@ -131,6 +131,7 @@ class FacilityLive:
             return {
                 "ts": dtn.isoformat(),
                 "facility": self.place.name, "country": self.place.country,
+                "priced": self.projected.get("priced", True),
                 "solar_kw": round(solar, 2),
                 "battery_soc": round(self.soc / cfg.battery_capacity_kwh * 100, 1),
                 "battery_kw": round(battery_kw, 2),
@@ -158,12 +159,14 @@ _reg_lock = threading.Lock()
 MAX_SESSIONS = 256
 
 
-def start(city, solar_kwp, battery_kwh, monthly_kwh):
+def start(city, solar_kwp, battery_kwh, monthly_kwh, place=None):
     """Create a live session for these inputs. Returns session id, or None."""
-    cfg, place, _ = estimate_service.build_facility(city, solar_kwp, battery_kwh, monthly_kwh)
+    cfg, place, _ = estimate_service.build_facility(
+        city, solar_kwp, battery_kwh, monthly_kwh, place=place)
     if cfg is None:
         return None
-    projected = estimate_service.estimate_savings(city, solar_kwp, battery_kwh, monthly_kwh)
+    projected = estimate_service.estimate_savings(
+        city, solar_kwp, battery_kwh, monthly_kwh, place=place)
     sid = uuid.uuid4().hex
     with _reg_lock:
         if len(_sessions) >= MAX_SESSIONS:

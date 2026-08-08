@@ -52,9 +52,68 @@ _TARIFFS = {
     "US": CountryTariff(0.16, 0.10, 0.03, 0.37, 0.30),  # United States
     "CA": CountryTariff(0.13, 0.09, 0.03, 0.13, 0.10),  # Canada
     "MA": CountryTariff(0.14, 0.10, 0.03, 0.70, 0.62),  # Morocco — fossil grid
+    "GR": CountryTariff(0.30, 0.17, 0.05, 0.30, 0.22),  # Greece
+    "CZ": CountryTariff(0.28, 0.16, 0.05, 0.40, 0.32),  # Czechia
+    "RO": CountryTariff(0.26, 0.15, 0.04, 0.30, 0.24),  # Romania
+    "HU": CountryTariff(0.24, 0.14, 0.04, 0.25, 0.20),  # Hungary
+    "FI": CountryTariff(0.18, 0.11, 0.03, 0.10, 0.07),  # Finland
+    "TR": CountryTariff(0.15, 0.10, 0.03, 0.45, 0.38),  # Turkey
+    "SY": CountryTariff(0.12, 0.08, 0.02, 0.55, 0.48),  # Syria — subsidised, fossil grid
+    "EG": CountryTariff(0.08, 0.05, 0.02, 0.45, 0.40),  # Egypt
+    "SA": CountryTariff(0.07, 0.05, 0.01, 0.55, 0.50),  # Saudi Arabia
+    "AE": CountryTariff(0.09, 0.06, 0.02, 0.45, 0.40),  # UAE
+    "JO": CountryTariff(0.13, 0.09, 0.03, 0.50, 0.45),  # Jordan
+    "LB": CountryTariff(0.15, 0.11, 0.03, 0.55, 0.50),  # Lebanon
+    "TN": CountryTariff(0.11, 0.08, 0.02, 0.50, 0.45),  # Tunisia
+    "DZ": CountryTariff(0.06, 0.04, 0.01, 0.55, 0.50),  # Algeria
+    "IN": CountryTariff(0.10, 0.07, 0.02, 0.70, 0.63),  # India — coal-heavy
+    "JP": CountryTariff(0.22, 0.14, 0.04, 0.45, 0.40),  # Japan
+    "AU": CountryTariff(0.25, 0.15, 0.05, 0.55, 0.45),  # Australia
+    "BR": CountryTariff(0.12, 0.08, 0.03, 0.12, 0.10),  # Brazil — hydro
 }
-# EU-ish fallback for any country not in the table.
+# EU-ish fallback for any country not in the table (flagged as estimated).
 _DEFAULT = CountryTariff(0.30, 0.17, 0.05, 0.30, 0.22)
+
+
+def is_priced(country_code) -> bool:
+    """True if we have a real per-country price (vs the generic fallback)."""
+    return (country_code or "").upper() in _TARIFFS
+
+
+def search_cities(q: str, count: int = 8) -> list:
+    """
+    Autocomplete: return matching cities for a typed query (Open-Meteo geocoding).
+    Each result carries coordinates + country + whether we have a real price.
+    """
+    if not q or len(q.strip()) < 2:
+        return []
+    url = "https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode(
+        {"name": q.strip(), "count": count, "language": "en", "format": "json"}
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=6) as r:
+            data = json.loads(r.read())
+    except Exception:
+        return []
+    out = []
+    for g in (data.get("results") or []):
+        cc = g.get("country_code", "")
+        out.append({
+            "name": g.get("name", ""),
+            "admin1": g.get("admin1", ""),          # region / state
+            "country": g.get("country", ""),
+            "country_code": cc,
+            "latitude": g["latitude"],
+            "longitude": g["longitude"],
+            "priced": cc.upper() in _TARIFFS,        # real price vs estimate
+        })
+    return out
+
+
+def place_from(name, country, country_code, latitude, longitude) -> "Place":
+    """Build a Place directly from an autocomplete selection (no re-geocoding)."""
+    return Place(name=name, country=country, country_code=country_code,
+                 latitude=float(latitude), longitude=float(longitude))
 
 
 def tariff_for_country(country_code: Optional[str]) -> CountryTariff:

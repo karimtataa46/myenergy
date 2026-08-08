@@ -26,6 +26,7 @@ import savings as savings_module
 import live_sim as live_sim_module
 import estimate_service
 import facility_live
+import pricing_service
 from live_sim import live_sim
 from brain import BrainInput
 from pydantic import BaseModel
@@ -36,6 +37,18 @@ class EstimateIn(BaseModel):
     solar_kwp: float = 100.0
     battery_kwh: float = 200.0
     monthly_kwh: float = 46920.0
+    # Optional exact place from the autocomplete pick (skip re-geocoding).
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+
+
+def _picked_place(inp: "EstimateIn"):
+    if inp.lat is not None and inp.lon is not None and inp.country_code:
+        return pricing_service.place_from(
+            inp.city, inp.country or "", inp.country_code, inp.lat, inp.lon)
+    return None
 
 # ── Global state ─────────────────────────────────────────────────────────────
 
@@ -215,12 +228,18 @@ async def estimate_page():
     return FileResponse(str(frontend_path / "estimate.html"))
 
 
+@app.get("/api/cities")
+async def api_cities(q: str = ""):
+    """Autocomplete: cities matching the typed query (name + country + price flag)."""
+    return await asyncio.to_thread(pricing_service.search_cities, q)
+
+
 @app.post("/api/estimate")
 async def api_estimate(inp: EstimateIn):
     """Run the validated engine on the user's own facility inputs."""
     return await asyncio.to_thread(
         estimate_service.estimate_savings,
-        inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh,
+        inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh, _picked_place(inp),
     )
 
 
@@ -236,6 +255,7 @@ async def api_facility_start(inp: EstimateIn):
     """Spin up a live session for this facility; returns a session id."""
     sid = await asyncio.to_thread(
         facility_live.start, inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh,
+        _picked_place(inp),
     )
     if sid is None:
         return {"error": f"Couldn't find “{inp.city}”. Try a nearby larger city."}

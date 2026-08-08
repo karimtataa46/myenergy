@@ -42,13 +42,18 @@ def _sunshine_factor(latitude: float) -> float:
 
 
 def build_facility(city: str, solar_kwp: float, battery_kwh: float,
-                   monthly_kwh: float):
+                   monthly_kwh: float, place=None):
     """
     Turn simple user inputs into a FacilityConfig + resolved Place + tariff.
     Returns (cfg, place, tariff) or (None, None, None) if the city is unknown.
-    Shared by the one-shot estimate AND the live facility dashboard.
+    Shared by the one-shot estimate AND the live facility dashboard. If `place`
+    is provided (from an autocomplete pick) we use its exact coordinates and
+    country instead of re-geocoding the typed name.
     """
-    place, tariff = pricing.lookup(city)
+    if place is not None:
+        tariff = pricing.tariff_for_country(place.country_code)
+    else:
+        place, tariff = pricing.lookup(city)
     if place is None:
         return None, None, None
 
@@ -82,9 +87,9 @@ def build_facility(city: str, solar_kwp: float, battery_kwh: float,
 
 
 def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
-                     monthly_kwh: float) -> dict:
+                     monthly_kwh: float, place=None) -> dict:
     """Compute one facility's monthly savings from simple user inputs."""
-    cfg, place, tariff = build_facility(city, solar_kwp, battery_kwh, monthly_kwh)
+    cfg, place, tariff = build_facility(city, solar_kwp, battery_kwh, monthly_kwh, place=place)
     if cfg is None:
         return {"error": f"Couldn't find “{city}”. Try a nearby larger city."}
     solar_kwp = cfg.solar_nameplate_kw
@@ -100,6 +105,7 @@ def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
     return {
         "city": place.name,
         "country": place.country,
+        "priced": pricing.is_priced(place.country_code),   # real price vs estimate
         "monthly_kwh": round(monthly_kwh),
         "solar_kwp": round(solar_kwp),
         "battery_kwh": round(battery_kwh),

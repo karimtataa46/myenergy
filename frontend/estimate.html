@@ -34,6 +34,18 @@
   .field input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;
     color:var(--text);font-family:inherit;font-size:16px;padding:13px 14px;outline:none}
   .field input:focus{border-color:var(--green)}
+  .cities{position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--card2);
+    border:1px solid var(--border);border-radius:12px;margin-top:6px;overflow:hidden;display:none;
+    max-height:290px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  .cities .ci{padding:11px 14px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;
+    gap:8px;align-items:center;border-bottom:1px solid var(--border)}
+  .cities .ci:last-child{border-bottom:none}
+  .cities .ci:hover{background:rgba(21,230,160,0.10)}
+  .cities .ci .where{color:var(--muted);font-size:12px}
+  .cities .ci .tag{font-size:9px;padding:2px 7px;border-radius:8px;font-weight:800;white-space:nowrap}
+  .cities .ci .real{background:#10241c;color:var(--green)}
+  .cities .ci .est{background:#2a2410;color:var(--amber)}
+  .cities .empty{padding:12px 14px;color:var(--muted);font-size:13px}
   .go{width:100%;background:linear-gradient(135deg,var(--green),var(--cyan));color:#06120d;border:0;
     border-radius:14px;font-family:inherit;font-size:15px;font-weight:800;padding:15px;cursor:pointer;margin-top:4px}
   .go:disabled{opacity:.55;cursor:default}
@@ -75,9 +87,10 @@
 
   <!-- Step 4: input form -->
   <form class="card" id="form">
-    <div class="field">
-      <label>City <span class="hint">sets your weather + electricity price automatically</span></label>
-      <input id="city" placeholder="e.g. Munich, Lyon, Krakow…" value="Munich" autocomplete="off">
+    <div class="field" style="position:relative">
+      <label>City <span class="hint">start typing, then pick from the list</span></label>
+      <input id="city" placeholder="e.g. Latakia, Munich, Lyon…" value="Munich" autocomplete="off">
+      <div id="cities" class="cities"></div>
     </div>
     <div class="field">
       <label>Solar array <span class="hint">installed size, kWp</span></label>
@@ -133,6 +146,48 @@
 const $ = id => document.getElementById(id);
 const euro = v => '€' + Math.round(v).toLocaleString();
 
+// ── City autocomplete: show matching cities as you type ──────────────────────
+let selectedPlace = null;               // set when the user picks from the list
+const cityInput = $('city'), citiesBox = $('cities');
+let acTimer;
+
+cityInput.addEventListener('input', () => {
+  selectedPlace = null;                 // typing invalidates a previous pick
+  clearTimeout(acTimer);
+  const q = cityInput.value.trim();
+  if (q.length < 2) { citiesBox.style.display = 'none'; return; }
+  acTimer = setTimeout(async () => {
+    try {
+      const list = await (await fetch('/api/cities?q=' + encodeURIComponent(q))).json();
+      if (!Array.isArray(list) || !list.length) {
+        citiesBox.innerHTML = '<div class="empty">No matching city — try a nearby larger one.</div>';
+        citiesBox.style.display = 'block'; return;
+      }
+      citiesBox._list = list;
+      citiesBox.innerHTML = list.map((c, i) => {
+        const where = [c.admin1, c.country].filter(Boolean).join(', ');
+        const tag = c.priced
+          ? '<span class="tag real">price ✓</span>'
+          : '<span class="tag est">est. price</span>';
+        return `<div class="ci" data-i="${i}"><span><b>${c.name}</b> <span class="where">${where}</span></span>${tag}</div>`;
+      }).join('');
+      citiesBox.style.display = 'block';
+    } catch (e) { citiesBox.style.display = 'none'; }
+  }, 220);
+});
+
+citiesBox.addEventListener('click', (e) => {
+  const row = e.target.closest('.ci'); if (!row) return;
+  const c = citiesBox._list[parseInt(row.dataset.i)];
+  selectedPlace = c;
+  cityInput.value = c.name + (c.country ? ', ' + c.country : '');
+  citiesBox.style.display = 'none';
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#city') && !e.target.closest('#cities')) citiesBox.style.display = 'none';
+});
+
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('err').style.display = 'none';
@@ -146,10 +201,14 @@ $('form').addEventListener('submit', async (e) => {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        city: $('city').value,
+        city: selectedPlace ? selectedPlace.name : $('city').value,
         solar_kwp: parseFloat($('solar').value) || 0,
         battery_kwh: parseFloat($('battery').value) || 0,
         monthly_kwh: parseFloat($('monthly').value) || 0,
+        lat: selectedPlace ? selectedPlace.latitude : null,
+        lon: selectedPlace ? selectedPlace.longitude : null,
+        country: selectedPlace ? selectedPlace.country : null,
+        country_code: selectedPlace ? selectedPlace.country_code : null,
       }),
     });
     const d = await r.json();
