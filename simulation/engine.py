@@ -32,6 +32,9 @@ class StepState:
     # Simple rule controllers ignore these.
     forecast_solar_kwh: List[float] = field(default_factory=list)
     forecast_load_kwh: List[float] = field(default_factory=list)
+    # The facility's parameters. Defaults to the standard factory so existing
+    # callers that don't pass one behave exactly as before.
+    cfg: "F.FacilityConfig" = field(default_factory=lambda: F.DEFAULT_CONFIG)
 
     @property
     def soc_pct(self) -> float:
@@ -74,48 +77,51 @@ Controller = Callable[[StepState], float]
 HORIZON_HOURS = 36
 
 
-def _apply_battery(soc_kwh: float, requested_ac_kwh: float) -> (float, float):
+def _apply_battery(soc_kwh: float, requested_ac_kwh: float, cfg=None) -> (float, float):
     """
     Apply a battery command with rate limits, SOC bounds, and efficiency.
     Returns (actual_battery_ac_kwh, new_soc_kwh).
     """
-    cap = F.BATTERY_CAPACITY_KWH
-    min_kwh = F.BATTERY_MIN_SOC * cap
-    max_kwh = F.BATTERY_MAX_SOC * cap
+    if cfg is None:
+        cfg = F.DEFAULT_CONFIG
+    cap = cfg.battery_capacity_kwh
+    min_kwh = cfg.battery_min_soc * cap
+    max_kwh = cfg.battery_max_soc * cap
 
     if requested_ac_kwh >= 0:
         # Charging: limited by rate and remaining room (accounting for efficiency)
-        ac = min(requested_ac_kwh, F.BATTERY_MAX_CHARGE_KW)  # 1 hour slot
-        stored = ac * F.CHARGE_EFFICIENCY
+        ac = min(requested_ac_kwh, cfg.battery_max_charge_kw)  # 1 hour slot
+        stored = ac * cfg.charge_efficiency
         room = max_kwh - soc_kwh
         if stored > room:
             stored = room
-            ac = stored / F.CHARGE_EFFICIENCY
+            ac = stored / cfg.charge_efficiency
         return ac, soc_kwh + stored
     else:
         # Discharging: limited by rate and available energy above reserve
-        ac = max(requested_ac_kwh, -F.BATTERY_MAX_DISCHARGE_KW)
+        ac = max(requested_ac_kwh, -cfg.battery_max_discharge_kw)
         delivered = -ac                          # AC energy we want out
-        drawn = delivered / F.DISCHARGE_EFFICIENCY
+        drawn = delivered / cfg.discharge_efficiency
         available = soc_kwh - min_kwh
         if drawn > available:
             drawn = max(available, 0.0)
-            delivered = drawn * F.DISCHARGE_EFFICIENCY
+            delivered = drawn * cfg.discharge_efficiency
             ac = -delivered
         return ac, soc_kwh - drawn
 
 
 def step(state: StepState, controller: Controller) -> StepResult:
+    cfg = state.cfg
     requested = controller(state)
-    battery_ac, new_soc = _apply_battery(state.soc_kwh, requested)
+    battery_ac, new_soc = _apply_battery(state.soc_kwh, requested, cfg)
 
     # Energy balance at the AC bus
     grid_net = state.load_kwh - state.solar_kwh + battery_ac
     grid_import = max(grid_net, 0.0)
     grid_export = max(-grid_net, 0.0)
 
-    cost = grid_import * F.tariff(state.hour) - grid_export * F.FEED_IN_TARIFF
-    co2 = grid_import * F.grid_co2(state.hour)
+    cost = grid_import * cfg.tariff(state.hour) - grid_export * cfg.feed_in_tariff
+    co2 = grid_import * cfg.grid_co2(state.hour)
 
     return StepResult(
         hour=state.hour,
@@ -133,23 +139,29 @@ def step(state: StepState, controller: Controller) -> StepResult:
 def simulate(
     weather: List[F.DayWeather],
     controller: Controller,
-    start_soc_kwh: float = 0.10 * F.BATTERY_CAPACITY_KWH,
+    start_soc_kwh: float = None,
+    cfg=None,
 ) -> Totals:
     """Run the controller across a list of days. Returns accumulated Totals."""
+    if cfg is None:
+        cfg = F.DEFAULT_CONFIG
+    if start_soc_kwh is None:
+        start_soc_kwh = cfg.battery_min_soc * cfg.battery_capacity_kwh
     totals = Totals()
     soc = start_soc_kwh
 
     # Flatten the whole month into hour-by-hour arrays so any hour can look
-    # ahead over the forecast horizon. (Perfect foresight — real forecasts
-    # have error; that's measured separately.)
-    all_solar = [day.solar_kwh(h) for day in weather for h in range(24)]
-    all_load = [F.LOAD_PROFILE_KW[h] for _ in weather for h in range(24)]
+    # ahead over the forecast horizon. Solar and load are built from THIS
+    # facility's config (so a bigger array / different load scales correctly).
+    all_solar = [cfg.solar_kwh(h, day.cloud_factor) for day in weather for h in range(24)]
+    all_load = [cfg.load_profile_kw[h] for _ in weather for h in range(24)]
     n = len(all_solar)
 
     for d, day in enumerate(weather):
         tomorrow = weather[d + 1] if d + 1 < len(weather) else day
         tomorrow_deficit = sum(
-            max(F.LOAD_PROFILE_KW[h] - tomorrow.solar_kwh(h), 0) for h in range(24)
+            max(cfg.load_profile_kw[h] - cfg.solar_kwh(h, tomorrow.cloud_factor), 0)
+            for h in range(24)
         )
 
         for h in range(24):
@@ -158,7 +170,8 @@ def simulate(
             load = all_load[t]
 
             # Forecast: average solar over next 3 hours (same day)
-            next_hours = [day.solar_kwh(hh) for hh in range(h + 1, min(h + 4, 24))]
+            next_hours = [cfg.solar_kwh(hh, day.cloud_factor)
+                          for hh in range(h + 1, min(h + 4, 24))]
             fc_next = sum(next_hours) / len(next_hours) if next_hours else 0.0
 
             # Look-ahead window for the optimal controller (current hour first)
@@ -171,11 +184,12 @@ def simulate(
                 solar_kwh=solar,
                 load_kwh=load,
                 soc_kwh=soc,
-                capacity_kwh=F.BATTERY_CAPACITY_KWH,
+                capacity_kwh=cfg.battery_capacity_kwh,
                 forecast_next_solar_kwh=fc_next,
                 forecast_tomorrow_deficit_kwh=tomorrow_deficit,
                 forecast_solar_kwh=window_solar,
                 forecast_load_kwh=window_load,
+                cfg=cfg,
             )
 
             res = step(state, controller)

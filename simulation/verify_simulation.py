@@ -32,11 +32,7 @@ def approx(a, b, tol=1e-6):
     return abs(a - b) <= tol
 
 
-class ZeroSolarDay:
-    """A day with literally zero solar — lets us hand-compute the answer."""
-    cloud_factor = 1.0
-    def solar_kwh(self, hour):
-        return 0.0
+# (Zero solar is now expressed as a FacilityConfig with solar_peak_kw=0 — see B1.)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -80,7 +76,11 @@ print("\nB) KNOWN-ANSWER TESTS (computed by hand, engine must match)")
 #     Peak load    (h 7-21)       = 1270 kWh x 0.28 = 355.60
 #     => exactly 390.88 EUR/day, 1564 kWh imported.
 null_controller = lambda s: 0.0
-t = simulate([ZeroSolarDay()], null_controller, start_soc_kwh=20.0)
+# Genuine zero solar = a facility with no solar array (solar_peak_kw=0), so the
+# engine computes 0 solar every hour regardless of clouds.
+zero_solar_cfg = F.FacilityConfig(solar_peak_kw=0.0)
+t = simulate([F.DayWeather(cloud_factor=1.0)], null_controller,
+             start_soc_kwh=20.0, cfg=zero_solar_cfg)
 check("Zero-solar day cost == 390.88 EUR (hand-computed)",
       approx(t.cost_eur, 390.88, tol=0.01), f"got {t.cost_eur}")
 check("Zero-solar day grid import == 1564 kWh",

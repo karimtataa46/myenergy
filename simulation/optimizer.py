@@ -33,16 +33,18 @@ from engine import StepState
 
 
 def optimal_battery_schedule(solar, load, price, feed_in, soc0,
-                             terminal_value=None):
+                             terminal_value=None, cfg=None):
     """
     Solve the LP for one horizon. Returns the optimal per-hour plan, or None
     if the solver fails (caller should fall back to a safe action).
     """
+    if cfg is None:
+        cfg = F.DEFAULT_CONFIG
     H = len(solar)
-    cap = F.BATTERY_CAPACITY_KWH
-    max_c, max_d = F.BATTERY_MAX_CHARGE_KW, F.BATTERY_MAX_DISCHARGE_KW
-    eff_c, eff_d = F.CHARGE_EFFICIENCY, F.DISCHARGE_EFFICIENCY
-    soc_min, soc_max = F.BATTERY_MIN_SOC * cap, F.BATTERY_MAX_SOC * cap
+    cap = cfg.battery_capacity_kwh
+    max_c, max_d = cfg.battery_max_charge_kw, cfg.battery_max_discharge_kw
+    eff_c, eff_d = cfg.charge_efficiency, cfg.discharge_efficiency
+    soc_min, soc_max = cfg.battery_min_soc * cap, cfg.battery_max_soc * cap
     if terminal_value is None:
         # Value of energy left in the battery at the horizon's end. With a long
         # enough rolling horizon (36h) end-effects are negligible and 0 matches
@@ -83,7 +85,7 @@ def optimal_battery_schedule(solar, load, price, feed_in, soc0,
         b_eq[r] = soc0 if k == 0 else 0.0
 
     # ── Bounds ───────────────────────────────────────────────────────────────
-    grid_max = F.GRID_MAX_KW
+    grid_max = cfg.grid_max_kw
     bounds = (
         [(0, max_c)] * H +          # charge
         [(0, max_d)] * H +          # discharge
@@ -118,11 +120,12 @@ def optimal(state: StepState) -> float:
     if H == 0:
         return 0.0
 
-    # Tariff for each future hour comes from its hour-of-day.
-    price = [F.tariff((state.hour + k) % 24) for k in range(H)]
-    feed_in = [F.FEED_IN_TARIFF] * H
+    # Tariff for each future hour comes from its hour-of-day (this facility's).
+    price = [state.cfg.tariff((state.hour + k) % 24) for k in range(H)]
+    feed_in = [state.cfg.feed_in_tariff] * H
 
-    sched = optimal_battery_schedule(solar, load, price, feed_in, state.soc_kwh)
+    sched = optimal_battery_schedule(solar, load, price, feed_in, state.soc_kwh,
+                                     cfg=state.cfg)
     if sched is None:
         # Safe fallback if the solver hiccups: behave reactively.
         return state.solar_kwh - state.load_kwh

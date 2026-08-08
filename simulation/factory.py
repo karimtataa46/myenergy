@@ -7,7 +7,7 @@ SAME assumptions. Change a number here, every test updates.
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 
@@ -151,3 +151,72 @@ def average_load_kw() -> float:
 
 def clear_day_solar_kwh() -> float:
     return sum(clear_sky_kw(h) for h in range(24))
+
+
+# ── FacilityConfig — one facility's parameters as a single object ─────────────
+# This is what turns the engine from "one hard-coded factory" into "any user's
+# facility." Every field defaults to the module constant above, so
+# FacilityConfig() == today's default factory (behaviour is byte-identical).
+# A per-user request just builds a FacilityConfig with different numbers and
+# hands it to the same validated engine.
+@dataclass
+class FacilityConfig:
+    name: str = "Default factory"
+    latitude: float = 48.137          # Munich (only used by the estimate layer)
+    longitude: float = 11.575
+
+    # solar
+    solar_peak_kw: float = SOLAR_PEAK_KW
+    solar_nameplate_kw: float = SOLAR_NAMEPLATE_KW
+    sunrise_hour: int = SUNRISE_HOUR
+    sunset_hour: int = SUNSET_HOUR
+
+    # battery
+    battery_capacity_kwh: float = BATTERY_CAPACITY_KWH
+    battery_max_charge_kw: float = BATTERY_MAX_CHARGE_KW
+    battery_max_discharge_kw: float = BATTERY_MAX_DISCHARGE_KW
+    battery_min_soc: float = BATTERY_MIN_SOC
+    battery_max_soc: float = BATTERY_MAX_SOC
+    charge_efficiency: float = CHARGE_EFFICIENCY
+    discharge_efficiency: float = DISCHARGE_EFFICIENCY
+
+    # grid
+    grid_max_kw: float = GRID_MAX_KW
+
+    # tariff
+    peak_tariff: float = PEAK_TARIFF
+    offpeak_tariff: float = OFFPEAK_TARIFF
+    feed_in_tariff: float = FEED_IN_TARIFF
+    peak_start: int = PEAK_START
+    peak_end: int = PEAK_END
+
+    # grid carbon intensity
+    co2_peak: float = CO2_PEAK
+    co2_offpeak: float = CO2_OFFPEAK
+
+    # hourly load profile (kW)
+    load_profile_kw: List[float] = field(default_factory=lambda: list(LOAD_PROFILE_KW))
+
+    # ── helpers (same logic as the module functions, but per-config) ─────────
+    def is_peak(self, hour: int) -> bool:
+        return self.peak_start <= hour < self.peak_end
+
+    def tariff(self, hour: int) -> float:
+        return self.peak_tariff if self.is_peak(hour) else self.offpeak_tariff
+
+    def grid_co2(self, hour: int) -> float:
+        return self.co2_peak if self.is_peak(hour) else self.co2_offpeak
+
+    def clear_sky_kw(self, hour: int) -> float:
+        if self.sunrise_hour <= hour <= self.sunset_hour:
+            angle = math.pi * (hour - self.sunrise_hour) / (self.sunset_hour - self.sunrise_hour)
+            return self.solar_peak_kw * math.sin(angle)
+        return 0.0
+
+    def solar_kwh(self, hour: int, cloud_factor: float) -> float:
+        """kWh produced this hour given a cloud factor (0=clear, 1=overcast)."""
+        return self.clear_sky_kw(hour) * (1.0 - 0.85 * cloud_factor)
+
+
+# The default facility (mirrors the module constants exactly).
+DEFAULT_CONFIG = FacilityConfig()

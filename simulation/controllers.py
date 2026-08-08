@@ -42,9 +42,10 @@ def predictive(s: StepState) -> float:
     """
     Smart controller. Returns battery_ac_kwh (+charge / -discharge).
     """
+    cfg = s.cfg
     cap = s.capacity_kwh
     net = s.solar_kwh - s.load_kwh
-    peak_now = F.is_peak(s.hour)
+    peak_now = cfg.is_peak(s.hour)
 
     # 1) Solar surplus -> always store it (it's free; save it for the peak)
     if net > 0:
@@ -53,14 +54,14 @@ def predictive(s: StepState) -> float:
     deficit = -net
 
     if peak_now:
-        # 2) Expensive hours: lean on the battery to avoid €0.28/kWh grid.
+        # 2) Expensive hours: lean on the battery to avoid the peak grid price.
         #    Forecast refinement: if a strong solar surge is < a few hours away
         #    and the battery is getting low, keep a small reserve so we don't
         #    drain to nothing right before the sun covers us for free.
         solar_surge_incoming = s.forecast_next_solar_kwh > 0.5 * s.load_kwh
         reserve_floor = 0.30 if (solar_surge_incoming and s.soc_pct < 0.45) else 0.0
-        usable = max(s.soc_kwh - (F.BATTERY_MIN_SOC + reserve_floor) * cap, 0.0)
-        discharge = min(deficit, F.BATTERY_MAX_DISCHARGE_KW, usable)
+        usable = max(s.soc_kwh - (cfg.battery_min_soc + reserve_floor) * cap, 0.0)
+        discharge = min(deficit, cfg.battery_max_discharge_kw, usable)
         return -discharge
 
     else:
@@ -68,24 +69,24 @@ def predictive(s: StepState) -> float:
         #    pre-charge the battery for tomorrow's peak — but only as much as
         #    tomorrow will actually use. A sunny tomorrow => charge less and
         #    skip the round-trip loss. THIS is the forecast paying off.
-        target_fraction = _precharge_target(s.forecast_tomorrow_deficit_kwh, cap)
+        target_fraction = _precharge_target(s.forecast_tomorrow_deficit_kwh, cap, cfg)
         target_kwh = target_fraction * cap
         need = target_kwh - s.soc_kwh
         if need <= 0:
             return 0.0
-        return min(need, F.BATTERY_MAX_CHARGE_KW)
+        return min(need, cfg.battery_max_charge_kw)
 
 
-def _precharge_target(tomorrow_deficit_kwh: float, cap: float) -> float:
+def _precharge_target(tomorrow_deficit_kwh: float, cap: float, cfg) -> float:
     """
     Decide how full the battery should be by morning (fraction 0..1).
     Big expected deficit tomorrow -> fill it. Small deficit (sunny) -> partial.
     Capped at 100%; battery only helps for what the peak can actually absorb.
     """
     # We can usefully discharge ~ (1 - min_soc) * cap during the peak.
-    usable_cap = (F.BATTERY_MAX_SOC - F.BATTERY_MIN_SOC) * cap
+    usable_cap = (cfg.battery_max_soc - cfg.battery_min_soc) * cap
     if tomorrow_deficit_kwh >= usable_cap:
-        return F.BATTERY_MAX_SOC          # full
+        return cfg.battery_max_soc          # full
     # Scale fill to expected need, but keep at least 40% so we always have some.
-    frac = F.BATTERY_MIN_SOC + tomorrow_deficit_kwh / cap
-    return max(0.40, min(F.BATTERY_MAX_SOC, frac))
+    frac = cfg.battery_min_soc + tomorrow_deficit_kwh / cap
+    return max(0.40, min(cfg.battery_max_soc, frac))
