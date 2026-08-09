@@ -50,6 +50,14 @@ def _picked_place(inp: "EstimateIn"):
             inp.city, inp.country or "", inp.country_code, inp.lat, inp.lon)
     return None
 
+
+# Serve HTML with no-cache so browsers never show a stale old page.
+_NOCACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+
+
+def _page(name: str) -> FileResponse:
+    return FileResponse(str(frontend_path / name), headers=_NOCACHE)
+
 # ── Global state ─────────────────────────────────────────────────────────────
 
 facility = sim_module.FacilitySimulator()
@@ -171,7 +179,7 @@ async def _refresh_forecast():
 
 @app.get("/")
 async def root():
-    return FileResponse(str(frontend_path / "index.html"))
+    return _page("index.html")
 
 
 @app.get("/api/live")
@@ -218,14 +226,14 @@ async def get_savings():
 
 @app.get("/sim")
 async def sim_page():
-    return FileResponse(str(frontend_path / "sim.html"))
+    return _page("sim.html")
 
 
 # ── Per-user estimate: user enters their facility, gets their own savings ────
 
 @app.get("/estimate")
 async def estimate_page():
-    return FileResponse(str(frontend_path / "estimate.html"))
+    return _page("estimate.html")
 
 
 @app.get("/api/cities")
@@ -247,7 +255,7 @@ async def api_estimate(inp: EstimateIn):
 
 @app.get("/facility")
 async def facility_page():
-    return FileResponse(str(frontend_path / "facility.html"))
+    return _page("facility.html")
 
 
 @app.post("/api/facility/start")
