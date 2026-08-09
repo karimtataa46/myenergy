@@ -21,7 +21,7 @@ if _SIM not in sys.path:
     sys.path.insert(0, _SIM)
 
 import factory as F                       # noqa: E402
-from engine import StepState, HORIZON_HOURS  # noqa: E402
+from engine import StepState, HORIZON_HOURS, _apply_battery  # noqa: E402
 import weather as weather_module          # noqa: E402
 import estimate_service                   # noqa: E402
 
@@ -44,8 +44,7 @@ class FacilityLive:
         self.place = place
         self.projected = projected
         self.forecast = weather_module.fetch_forecast(place.latitude, place.longitude)
-        self.soc = 0.60 * cfg.battery_capacity_kwh    # start at 60%
-        self.last = time.time()
+        self._plan_cache = None                       # (hour, plan) — recomputed hourly
         self._lock = threading.Lock()
 
     # ── real weather solar for THIS array, right now ─────────────────────────
@@ -53,41 +52,60 @@ class FacilityLive:
         ref = weather_module.get_current_solar(self.forecast) or 0.0   # for a 100 kWp ref
         return max(0.0, ref * (self.cfg.solar_nameplate_kw / F.SOLAR_NAMEPLATE_KW))
 
-    def _forecast_window(self, hour):
-        """Next HORIZON hours of (solar, load) for the optimiser — real forecast."""
+    def _solar_by_dayhour(self):
+        """{hours since today 00:00 UTC -> solar kW scaled to this array} from real forecast."""
         cfg = self.cfg
-        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        upcoming = [f for f in self.forecast if f.timestamp >= now][:HORIZON_HOURS]
+        now = datetime.now(timezone.utc)
+        day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
         scale = cfg.solar_nameplate_kw / F.SOLAR_NAMEPLATE_KW
-        win_solar = [max(0.0, f.estimated_solar_kw * scale) for f in upcoming]
-        if not win_solar:
-            win_solar = [self._current_solar_kw()]
-        win_load = [cfg.load_profile_kw[(hour + k) % 24] for k in range(len(win_solar))]
-        return win_solar, win_load
+        m = {}
+        for f in self.forecast:
+            dh = int((f.timestamp - day0).total_seconds() // 3600)
+            if 0 <= dh < 72:
+                m[dh] = max(0.0, f.estimated_solar_kw * scale)
+        return m
 
-    def _apply_live(self, req_kw, dt_h):
-        """Clamp the desired battery power to rate + SOC, advance SOC over dt_h."""
+    def _plan_to_now(self):
+        """
+        Deterministically compute the battery SOC + this-hour decision for the
+        CURRENT time by running the optimiser over today's REAL weather, with a
+        one-day warm-up so the arbitrary start value doesn't matter. This is why
+        the battery now reflects the actual time of day (e.g. what it did
+        overnight) instead of a frozen number. Cached per hour.
+        Returns (soc_start_of_hour, soc_end_of_hour, battery_kw, hour, next_solar).
+        """
         cfg = self.cfg
-        min_kwh = cfg.battery_min_soc * cfg.battery_capacity_kwh
-        max_kwh = cfg.battery_max_soc * cfg.battery_capacity_kwh
-        if req_kw >= 0:                                   # charge
-            kw = min(req_kw, cfg.battery_max_charge_kw)
-            stored = kw * cfg.charge_efficiency * dt_h
-            room = max_kwh - self.soc
-            if stored > room:
-                stored = max(room, 0.0)
-                kw = (stored / dt_h / cfg.charge_efficiency) if dt_h > 0 else 0.0
-            self.soc += stored
-            return kw
-        else:                                             # discharge
-            kw = max(req_kw, -cfg.battery_max_discharge_kw)
-            drawn = (-kw) / cfg.discharge_efficiency * dt_h
-            avail = self.soc - min_kwh
-            if drawn > avail:
-                drawn = max(avail, 0.0)
-                kw = -((drawn / dt_h) * cfg.discharge_efficiency) if dt_h > 0 else 0.0
-            self.soc -= drawn
-            return kw
+        hour_now = datetime.now(timezone.utc).hour
+        if self._plan_cache is not None and self._plan_cache[0] == hour_now:
+            return self._plan_cache[1]
+
+        solar_map = self._solar_by_dayhour()
+        solar_at = lambda dh: solar_map.get(dh, 0.0)
+        load_at = lambda dh: cfg.load_profile_kw[dh % 24]
+
+        def step_hour(dh, soc):
+            win_solar = [solar_at(dh + k) for k in range(HORIZON_HOURS)]
+            win_load = [load_at(dh + k) for k in range(HORIZON_HOURS)]
+            st = StepState(
+                hour=dh % 24, solar_kwh=solar_at(dh), load_kwh=load_at(dh), soc_kwh=soc,
+                capacity_kwh=cfg.battery_capacity_kwh,
+                forecast_next_solar_kwh=(sum(win_solar[1:4]) / 3 if len(win_solar) > 3 else 0.0),
+                forecast_tomorrow_deficit_kwh=0.0,
+                forecast_solar_kwh=win_solar, forecast_load_kwh=win_load, cfg=cfg,
+            )
+            return _apply_battery(soc, _DECIDE(st), cfg)   # (battery_kw, new_soc)
+
+        soc = 0.50 * cfg.battery_capacity_kwh
+        for h in range(24):                     # warm-up day -> steady state
+            _, soc = step_hour(h, soc)
+        soc_start, battery_kw = soc, 0.0
+        for h in range(hour_now + 1):           # today up to the current hour
+            soc_start = soc
+            battery_kw, soc = step_hour(h, soc)
+
+        result = (soc_start, soc, battery_kw, hour_now, solar_at(hour_now + 1))
+        self._plan_cache = (hour_now, result)
+        return result
 
     def _explain(self, battery_kw, solar, load, price):
         if solar > load + 0.5:
@@ -100,27 +118,14 @@ class FacilityLive:
 
     def state(self):
         with self._lock:
-            now = time.time()
-            dt_h = min((now - self.last) / 3600.0, 1.0 / 60.0)   # cap at 1 min
-            self.last = now
-            dtn = datetime.now(timezone.utc)
-            hour = dtn.hour
+            soc_start, soc_end, battery_kw, hour, next_solar = self._plan_to_now()
+            now = datetime.now(timezone.utc)
+            frac = now.minute / 60.0
+            soc = soc_start + (soc_end - soc_start) * frac      # smooth within the hour
             cfg = self.cfg
 
-            solar = self._current_solar_kw()
-            load = cfg.load_profile_kw[hour] * random.uniform(0.96, 1.04)
-
-            win_solar, win_load = self._forecast_window(hour)
-            fc_next = sum(win_solar[1:4]) / 3 if len(win_solar) > 3 else solar
-            state = StepState(
-                hour=hour, solar_kwh=solar, load_kwh=load, soc_kwh=self.soc,
-                capacity_kwh=cfg.battery_capacity_kwh,
-                forecast_next_solar_kwh=fc_next, forecast_tomorrow_deficit_kwh=0.0,
-                forecast_solar_kwh=win_solar, forecast_load_kwh=win_load, cfg=cfg,
-            )
-            req = _DECIDE(state)
-            battery_kw = self._apply_live(req, dt_h)
-
+            solar = self._current_solar_kw()                     # real current solar
+            load = cfg.load_profile_kw[hour] * random.uniform(0.97, 1.03)
             grid_net = load - solar + battery_kw
             grid_import = max(grid_net, 0.0)
             grid_export = max(-grid_net, 0.0)
@@ -129,21 +134,21 @@ class FacilityLive:
             reason, action = self._explain(battery_kw, solar, load, cfg.tariff(hour))
 
             return {
-                "ts": dtn.isoformat(),
+                "ts": now.isoformat(),
                 "facility": self.place.name, "country": self.place.country,
                 "priced": self.projected.get("priced", True),
                 "solar_kw": round(solar, 2),
-                "battery_soc": round(self.soc / cfg.battery_capacity_kwh * 100, 1),
+                "battery_soc": round(soc / cfg.battery_capacity_kwh * 100, 1),
                 "battery_kw": round(battery_kw, 2),
                 "grid_import_kw": round(grid_import, 2),
                 "grid_export_kw": round(grid_export, 2),
                 "consumption_kw": round(load, 2),
                 "tariff": round(cfg.tariff(hour), 3),
-                "upcoming_solar_kw": round(fc_next, 1),
+                "upcoming_solar_kw": round(next_solar, 1),
                 "self_powered_pct": round(self_pow, 1),
                 "solar_peak_kw": round(cfg.solar_peak_kw, 1),
                 "action": action, "reason": reason,
-                "zones": {z: round(load * frac, 2) for z, frac in ZONE_SHARES.items()},
+                "zones": {z: round(load * fr, 2) for z, fr in ZONE_SHARES.items()},
                 "solar_kwp": round(cfg.solar_nameplate_kw),
                 "battery_kwh": round(cfg.battery_capacity_kwh),
                 "projected_monthly_eur": self.projected.get("saved_eur", 0),
