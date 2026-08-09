@@ -37,13 +37,33 @@ ZONE_SHARES = {
     "hvac": 0.16, "lighting": 0.10, "office": 0.07,
 }
 
+# Cache real forecasts by rounded location so many sessions for the same city
+# reuse one fetch instead of hammering Open-Meteo (which then rate-limits us
+# into the location-independent fallback).
+_fc_cache = {}
+_fc_lock = threading.Lock()
+_FC_TTL = 1800  # 30 minutes
+
+
+def _cached_forecast(lat, lon):
+    key = (round(lat, 1), round(lon, 1))
+    now = time.time()
+    with _fc_lock:
+        hit = _fc_cache.get(key)
+        if hit and now - hit[0] < _FC_TTL:
+            return hit[1]
+    fc = weather_module.fetch_forecast(lat, lon)
+    with _fc_lock:
+        _fc_cache[key] = (now, fc)
+    return fc
+
 
 class FacilityLive:
     def __init__(self, cfg, place, projected):
         self.cfg = cfg
         self.place = place
         self.projected = projected
-        self.forecast = weather_module.fetch_forecast(place.latitude, place.longitude)
+        self.forecast = _cached_forecast(place.latitude, place.longitude)
         self._plan_cache = None                       # (hour, plan) — recomputed hourly
         self._lock = threading.Lock()
 

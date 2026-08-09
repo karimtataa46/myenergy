@@ -50,12 +50,14 @@ def fetch_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[W
     )
 
     try:
-        with urllib.request.urlopen(url, timeout=5) as response:
+        with urllib.request.urlopen(url, timeout=8) as response:
             data = json.loads(response.read())
         return _parse_open_meteo(data)
     except Exception:
-        # Offline fallback: generate synthetic clear-sky irradiance
-        return _synthetic_forecast()
+        # Offline/rate-limited fallback: synthetic clear-sky, but location-aware
+        # so different cities still differ (sun timing by longitude, strength by
+        # latitude) instead of all looking identical.
+        return _synthetic_forecast(lat, lon)
 
 
 def _parse_open_meteo(data: dict) -> list[WeatherForecastHour]:
@@ -79,23 +81,28 @@ def _parse_open_meteo(data: dict) -> list[WeatherForecastHour]:
     return result
 
 
-def _synthetic_forecast() -> list[WeatherForecastHour]:
-    """Clear-sky sinusoidal model as offline fallback."""
+def _synthetic_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[WeatherForecastHour]:
+    """
+    Location-aware clear-sky fallback. Solar noon shifts with longitude (so the
+    sun peaks at the right UTC hour for that place) and peak strength drops with
+    latitude — so two different cities never look identical.
+    """
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    solar_noon = 12.0 - lon / 15.0                       # UTC hour of local solar noon
+    half_day = 6.5                                        # ~half-daylight hours
+    peak = 950.0 * max(0.3, min(1.0, 1.0 - abs(lat) / 120.0))  # W/m² (lower at high latitude)
     result = []
     for h in range(48):
         dt = now + timedelta(hours=h)
-        hour_of_day = dt.hour
-        # Solar peaks at noon (hour 12), zero before sunrise (6) and after sunset (20)
-        if 6 <= hour_of_day <= 20:
-            angle = math.pi * (hour_of_day - 6) / 14
-            irr = 800 * math.sin(angle)
+        delta = ((dt.hour - solar_noon + 12) % 24) - 12  # signed hours from local noon
+        if abs(delta) <= half_day:
+            irr = max(0.0, peak * math.cos((math.pi / 2) * delta / half_day))
         else:
             irr = 0.0
         result.append(WeatherForecastHour(
             timestamp=dt,
             solar_irradiance_wm2=irr,
-            cloud_cover_percent=10.0,
+            cloud_cover_percent=15.0,
             temperature_c=20.0,
             estimated_solar_kw=irradiance_to_solar_kw(irr),
         ))
