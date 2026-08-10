@@ -68,18 +68,6 @@ class WeatherForecastHour:
 
 
 @dataclass
-class EnergyDecision:
-    timestamp: datetime
-    action: GridAction
-    reason: str
-    solar_kw: float
-    battery_kw: float        # positive = charging, negative = discharging
-    grid_kw: float           # positive = importing, negative = exporting
-    consumption_kw: float
-    forecast_horizon_hours: int = 2
-
-
-@dataclass
 class SystemSnapshot:
     timestamp: datetime
     solar: SolarReading
@@ -89,3 +77,54 @@ class SystemSnapshot:
     decision: EnergyDecision
     co2_saved_kg: float = 0.0
     cost_saved_eur: float = 0.0
+
+
+@dataclass
+class ShiftableDevice:
+    """NEW: Represents a flexible load that the brain can turn on or off."""
+    id: str
+    name: str
+    power_draw_kw: float  # How much power it uses when ON
+    is_on: bool  # Current state
+
+    # Constraints
+    must_finish_by: datetime  # Deadline (e.g., EV must be charged by 07:00 tomorrow)
+    remaining_kwh_needed: float  # How much energy is left to fulfill the task
+    is_interruptible: bool  # Can we turn it off mid-cycle?
+
+    @property
+    def is_fulfilled(self) -> bool:
+        """True if the device has received all the energy it needs."""
+        return self.remaining_kwh_needed <= 0.0
+
+    def urgency(self, current_time: datetime) -> float:
+        """
+        Returns a score of how badly this device needs to turn on NOW.
+        >= 1.0 means it MUST turn on immediately to finish in time.
+        (Not a @property — it takes an argument and is called as urgency(now).)
+        """
+        if self.is_fulfilled:
+            return 0.0
+
+        hours_left = (self.must_finish_by - current_time).total_seconds() / 3600.0
+
+        # If the deadline is now or in the past, it's critically urgent
+        if hours_left <= 0:
+            return float('inf')
+
+        hours_needed = self.remaining_kwh_needed / self.power_draw_kw
+        return hours_needed / hours_left
+
+
+@dataclass
+class EnergyDecision:
+    """MODIFIED: Added device_commands to control the shiftable loads."""
+    timestamp: datetime
+    action: GridAction
+    reason: str
+    solar_kw: float
+    battery_kw: float  # positive = charging, negative = discharging
+    grid_kw: float  # positive = importing, negative = exporting
+    consumption_kw: float
+    device_commands: Dict[str, bool] = field(default_factory=dict)  # NEW: {"ev_charger": True, "water_heater": False}
+    forecast_horizon_hours: int = 2

@@ -87,13 +87,17 @@ def _synthetic_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> l
     sun peaks at the right UTC hour for that place) and peak strength drops with
     latitude — so two different cities never look identical.
     """
-    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    # Anchor at TODAY 00:00 UTC and emit hours 0..47 from midnight, exactly like
+    # the real Open-Meteo forecast (forecast_days=2, timezone=UTC). Anchoring at
+    # `now` used to drop every pre-noon hour, so the optimiser saw no morning sun
+    # and the battery never charged in fallback mode.
+    day0 = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     solar_noon = 12.0 - lon / 15.0                       # UTC hour of local solar noon
     half_day = 6.5                                        # ~half-daylight hours
     peak = 950.0 * max(0.3, min(1.0, 1.0 - abs(lat) / 120.0))  # W/m² (lower at high latitude)
     result = []
     for h in range(48):
-        dt = now + timedelta(hours=h)
+        dt = day0 + timedelta(hours=h)
         delta = ((dt.hour - solar_noon + 12) % 24) - 12  # signed hours from local noon
         if abs(delta) <= half_day:
             irr = max(0.0, peak * math.cos((math.pi / 2) * delta / half_day))
@@ -107,6 +111,7 @@ def _synthetic_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> l
             estimated_solar_kw=irradiance_to_solar_kw(irr),
         ))
     return result
+
 
 
 def get_upcoming_solar(

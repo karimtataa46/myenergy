@@ -200,7 +200,15 @@ def start(city, solar_kwp, battery_kwh, monthly_kwh, place=None):
     return sid
 
 
+
+
 def live(sid):
     with _reg_lock:
-        fl = _sessions.get(sid)
-    return fl.state() if fl else None
+        # BUG FIX: Pop and re-insert to move this session to the end
+        # of the dictionary (making it the most recently used).
+        fl = _sessions.pop(sid, None)
+        if fl:
+            _sessions[sid] = fl
+            return fl.state()
+
+    return None

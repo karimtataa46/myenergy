@@ -67,7 +67,13 @@ class Totals:
 
     @property
     def solar_fraction(self) -> float:
-        return self.solar_used_kwh / self.load_kwh if self.load_kwh else 0.0
+        # Self-consumed solar / load. Solar can serve load directly AND via the
+        # battery, but it can never serve MORE than the load it covers, so the
+        # fraction is bounded to [0,1]. (Counting AC-in battery charge slightly
+        # over-states self-use when solar hugely exceeds load; cap it here.)
+        if not self.load_kwh:
+            return 0.0
+        return min(1.0, self.solar_used_kwh / self.load_kwh)
 
 
 # Controller signature: takes StepState, returns desired battery_ac_kwh

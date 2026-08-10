@@ -2,7 +2,7 @@
 # this repo), which is more reliable than Render's native Python build and is
 # the exact container verified to run locally.
 #
-# Deploy: push to GitHub, then in Render → New > Blueprint → pick this repo.
+# Deploy: push to GitHub, then in Render -> New > Blueprint -> pick this repo.
 services:
   - type: web
     name: myenergy

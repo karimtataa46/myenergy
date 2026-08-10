@@ -114,7 +114,10 @@ def estimate_savings(city: str, solar_kwp: float, battery_kwh: float,
         "baseline_eur": round(base.cost_eur),
         "myenergy_eur": round(smart.cost_eur),
         "saved_eur": round(saved),
-        "saved_pct": round(saved / base.cost_eur * 100, 1) if base.cost_eur else 0.0,
+        # Divide by the MAGNITUDE of the baseline so the % follows the sign of
+        # the saving. For a net-exporter facility the baseline is negative (it
+        # earns money); a positive saving must still read as a positive %.
+        "saved_pct": round(saved / abs(base.cost_eur) * 100, 1) if base.cost_eur else 0.0,
         "annual_eur": round(saved * 12),
         "co2_avoided_kg": round(co2),
         "solar_fraction_pct": round(smart.solar_fraction * 100, 1),

@@ -18,9 +18,10 @@ Decision priority (highest first):
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-
+from typing import List, Dict
 from models import (
-    BatteryState, SolarReading, ConsumptionReading, GridAction, EnergyDecision
+    BatteryState, SolarReading, ConsumptionReading,
+    ShiftableDevice, GridAction, EnergyDecision,
 )
 
 
@@ -36,135 +37,166 @@ OFFPEAK_TARIFF_THRESHOLD = 0.15  # €/kWh — at or below this = cheap night ra
 
 @dataclass
 class BrainInput:
+    """MODIFIED: Replaced monolithic consumption with base load and shiftable devices."""
     solar: SolarReading
     battery: BatteryState
-    consumption: ConsumptionReading
-    upcoming_solar_kw: float      # avg solar expected next N hours
+    base_load_kw: float                      # NEW: Power used by non-controllable things (lights, servers)
+    shiftable_devices: List[ShiftableDevice] # NEW: List of devices the brain is allowed to control
+    upcoming_solar_kw: float
     current_tariff_eur_kwh: float
 
 
 def decide(inp: BrainInput) -> EnergyDecision:
-    """
-    Core decision function. Takes current state, returns what to do.
-    Returns an EnergyDecision with exact power flows.
-    """
+    now = datetime.now(timezone.utc)
     solar = inp.solar.power_kw
-    load = inp.consumption.total_kw
     soc = inp.battery.soc_percent
     bat = inp.battery
     upcoming = inp.upcoming_solar_kw
+    is_offpeak = inp.current_tariff_eur_kwh <= OFFPEAK_TARIFF_THRESHOLD
 
-    net_solar = solar - load   # positive = solar surplus, negative = deficit
+    # =========================================================================
+    # STAGE 1: DEVICE SCHEDULING (Load Shifting)
+    # =========================================================================
+    device_commands = {}
+    active_shiftable_kw = 0.0
 
-    # ── Rule 1: Battery critical — protect at all costs ─────────────────────
+    # Calculate how much free solar we have before turning on flexible devices
+    available_solar_kw = max(0.0, solar - inp.base_load_kw)
+
+    # Filter out devices that are already done, and sort the rest by urgency
+    unfulfilled = [d for d in inp.shiftable_devices if not d.is_fulfilled]
+    unfulfilled.sort(key=lambda d: d.urgency(now), reverse=True)
+
+    for dev in unfulfilled:
+        turn_on = False
+
+        # Rule A: Non-interruptible device is already running — don't stop it
+        if not dev.is_interruptible and dev.is_on:
+            turn_on = True
+        # Rule B: Deadline is imminent — MUST turn on right now
+        elif dev.urgency(now) >= 1.0:
+            turn_on = True
+        # Rule C: Grid is very cheap — turn on now to avoid peak prices later
+        elif is_offpeak:
+            turn_on = True
+        # Rule D: We have enough free solar surplus to power this device
+        elif available_solar_kw >= dev.power_draw_kw:
+            turn_on = True
+            available_solar_kw -= dev.power_draw_kw  # Deduct from our free solar pool
+
+        device_commands[dev.id] = turn_on
+        if turn_on:
+            active_shiftable_kw += dev.power_draw_kw
+
+    # The actual load we must satisfy this tick
+    total_load = inp.base_load_kw + active_shiftable_kw
+    net_solar = solar - total_load  # Positive = surplus, Negative = deficit
+
+    # =========================================================================
+    # STAGE 2: BATTERY & GRID DISPATCH
+    # =========================================================================
+
+    # Rule 1: Battery critical — protect at all costs
     if soc <= BATTERY_CRITICAL_SOC:
-        # Stop discharging immediately, import from grid
         return EnergyDecision(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=now,
             action=GridAction.GRID_IMPORT,
             reason=f"Battery critical ({soc:.0f}%) — protecting remaining charge",
             solar_kw=solar,
             battery_kw=0.0,
-            grid_kw=max(load - solar, 0),
-            consumption_kw=load,
+            grid_kw=max(total_load - solar, 0.0),
+            consumption_kw=total_load,
+            device_commands=device_commands
         )
 
-    # ── Rule 2: Solar surplus — use it ──────────────────────────────────────
+    # Rule 2: Solar surplus — charge battery or export
     if net_solar > 0:
         if not bat.is_full:
-            # Charge battery with surplus
             charge_kw = min(net_solar, bat.max_charge_kw)
-            export_kw = max(net_solar - charge_kw, 0)
+            export_kw = max(net_solar - charge_kw, 0.0)
             return EnergyDecision(
-                timestamp=datetime.now(timezone.utc),
-                # This energy is SOLAR surplus, not grid — label it accordingly.
-                # (If there's still surplus after charging, we also export it.)
+                timestamp=now,
                 action=GridAction.BATTERY_CHARGE_FROM_SOLAR if export_kw == 0 else GridAction.EXPORT_TO_GRID,
                 reason=f"Solar surplus {net_solar:.1f}kW — charging battery",
                 solar_kw=solar,
                 battery_kw=charge_kw,
                 grid_kw=-export_kw,
-                consumption_kw=load,
+                consumption_kw=total_load,
+                device_commands=device_commands
             )
         else:
-            # Battery full — export excess to grid
             return EnergyDecision(
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now,
                 action=GridAction.EXPORT_TO_GRID,
                 reason=f"Battery full, exporting {net_solar:.1f}kW to grid",
                 solar_kw=solar,
                 battery_kw=0.0,
                 grid_kw=-net_solar,
-                consumption_kw=load,
+                consumption_kw=total_load,
+                device_commands=device_commands
             )
 
     # Below here: solar < load (deficit)
     deficit = abs(net_solar)
-    is_offpeak = inp.current_tariff_eur_kwh <= OFFPEAK_TARIFF_THRESHOLD
 
-    # ── Rule 3: Off-peak — grid is cheap, pre-charge the battery ─────────────
-    # This is the arbitrage proven in the monthly simulation (€742/month):
-    # fill the battery at the €0.12 night rate so it can offset the €0.28
-    # peak window tomorrow. A dumb controller leaves the battery idle here.
+    # Rule 3: Off-peak — grid is cheap, pre-charge the battery
     if is_offpeak:
         if not bat.is_full:
-            charge_kw = min(bat.max_charge_kw, (BATTERY_FULL_SOC - soc) / 100 * bat.capacity_kwh)
-            charge_kw = max(charge_kw, 0)
+            # Note: We calculate power limit based on capacity, but only bound it by max_charge_kw
+            charge_kw = bat.max_charge_kw
             return EnergyDecision(
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now,
                 action=GridAction.BATTERY_CHARGE_FROM_GRID,
-                reason=f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€) — pre-charging battery {soc:.0f}%→full for tomorrow's peak",
+                reason=f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€) — pre-charging battery for tomorrow",
                 solar_kw=solar,
                 battery_kw=charge_kw,
                 grid_kw=deficit + charge_kw,
-                consumption_kw=load,
+                consumption_kw=total_load,
+                device_commands=device_commands
             )
-        # Battery already full — just ride the cheap grid
         return EnergyDecision(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=now,
             action=GridAction.GRID_IMPORT,
             reason=f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€), battery full — riding cheap grid",
             solar_kw=solar,
             battery_kw=0.0,
             grid_kw=deficit,
-            consumption_kw=load,
+            consumption_kw=total_load,
+            device_commands=device_commands
         )
 
-    # Below here: PEAK hours (expensive grid). Lean on the battery.
-
-    # ── Rule 4: Peak + strong solar imminent — keep a reserve ───────────────
-    # The forecast story: don't drain to nothing right before the sun
-    # returns; keep some charge for the evening peak.
+    # Rule 4: Peak + strong solar imminent — keep a reserve
     solar_arriving_soon = upcoming >= SOLAR_INCOMING_THRESHOLD_KW
     reserve_soc = BATTERY_RESERVE_SOC + (10 if (solar_arriving_soon and soc < 45) else 0)
 
-    # ── Rule 5: Peak — discharge battery to dodge expensive grid ────────────
+    # Rule 5: Peak — discharge battery to dodge expensive grid
     if soc > reserve_soc and deficit > MIN_GRID_IMPORT_KW:
-        usable_kwh = (soc - reserve_soc) / 100 * bat.capacity_kwh
-        discharge_kw = min(deficit, bat.max_discharge_kw, usable_kwh)
+        # BUG FIX: Removed usable_kwh constraint. Power should only be constrained by inverter limits.
+        discharge_kw = min(deficit, bat.max_discharge_kw)
         remaining_deficit = deficit - discharge_kw
         note = " (holding reserve, solar incoming)" if reserve_soc > BATTERY_RESERVE_SOC else ""
         return EnergyDecision(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=now,
             action=GridAction.BATTERY_DISCHARGE,
-            reason=f"Peak ({inp.current_tariff_eur_kwh:.2f}€) — discharging battery {soc:.0f}% to cover {discharge_kw:.0f}kW{note}",
+            reason=f"Peak ({inp.current_tariff_eur_kwh:.2f}€) — discharging {discharge_kw:.0f}kW{note}",
             solar_kw=solar,
             battery_kw=-discharge_kw,
             grid_kw=remaining_deficit,
-            consumption_kw=load,
+            consumption_kw=total_load,
+            device_commands=device_commands
         )
 
-    # ── Rule 6: Last resort — battery depleted, import from grid ─────────────
+    # Rule 6: Last resort — battery depleted to reserve, import from grid
     return EnergyDecision(
-        timestamp=datetime.now(timezone.utc),
+        timestamp=now,
         action=GridAction.GRID_IMPORT,
         reason=f"Peak but battery at reserve ({soc:.0f}%) — importing {deficit:.1f}kW from grid",
         solar_kw=solar,
         battery_kw=0.0,
         grid_kw=deficit,
-        consumption_kw=load,
+        consumption_kw=total_load,
+        device_commands=device_commands
     )
-
 
 def solar_only_mode(solar: float, load: float, bat: BatteryState) -> EnergyDecision:
     """When solar exactly meets load (rare, but handle it)."""
@@ -177,3 +209,5 @@ def solar_only_mode(solar: float, load: float, bat: BatteryState) -> EnergyDecis
         grid_kw=0.0,
         consumption_kw=load,
     )
+
+

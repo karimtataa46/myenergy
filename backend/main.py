@@ -30,6 +30,8 @@ import pricing_service
 from live_sim import live_sim
 from brain import BrainInput
 from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta
+from models import ShiftableDevice
 
 
 class EstimateIn(BaseModel):
@@ -94,6 +96,29 @@ app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
 
 # ── Background tasks ──────────────────────────────────────────────────────────
 
+# 1. Define your devices somewhere outside the loop (or load them from a DB)
+system_devices = [
+    ShiftableDevice(
+        id="ev_charger_1",
+        name="Delivery Van EV",
+        power_draw_kw=11.0,
+        is_on=False,
+        must_finish_by=datetime.now(timezone.utc) + timedelta(hours=12),  # Needs to be ready in 12 hours
+        remaining_kwh_needed=40.0,  # Needs 40 kWh total
+        is_interruptible=True
+    ),
+    ShiftableDevice(
+        id="water_heater",
+        name="Industrial Water Heater",
+        power_draw_kw=15.0,
+        is_on=False,
+        must_finish_by=datetime.now(timezone.utc) + timedelta(hours=4),
+        remaining_kwh_needed=10.0,
+        is_interruptible=False  # Once started, don't stop until finished
+    )
+]
+
+
 async def _control_loop():
     """Main energy control loop — runs every TICK_INTERVAL_SECONDS."""
     global latest_snapshot
@@ -102,38 +127,80 @@ async def _control_loop():
             with _forecast_lock:
                 fc = forecast_cache[:]
 
-            # Live solar from the REAL weather forecast (clouds + time of day),
-            # not a synthetic clear-sky curve. Falls back to the sim if offline.
             current_solar = weather_module.get_current_solar(fc)
             solar = facility.get_solar(override_kw=current_solar)
             battery = facility.get_battery()
-            consumption = facility.get_consumption()
-            upcoming = weather_module.get_upcoming_solar(fc, from_now_hours=2) if fc else 0.0
 
+            # Use your old total consumption as the "Base Load" (stuff we can't turn off)
+            base_consumption = facility.get_consumption()
+            upcoming = weather_module.get_upcoming_solar(fc, from_now_hours=2) if fc else 0.0
             tariff = 0.28 if 7 <= datetime.now(timezone.utc).hour < 22 else 0.12
 
+            # 2. Feed the new inputs to the Brain
             decision = brain.decide(BrainInput(
                 solar=solar,
                 battery=battery,
-                consumption=consumption,
+                base_load_kw=base_consumption.total_kw,
+                shiftable_devices=system_devices,
                 upcoming_solar_kw=upcoming,
                 current_tariff_eur_kwh=tariff,
             ))
 
+            # 3. Apply device commands and tick down their required energy!
+            for dev in system_devices:
+                if not dev.is_fulfilled:
+                    # Turn on or off based on the brain's command
+                    dev.is_on = decision.device_commands.get(dev.id, False)
+
+                    if dev.is_on:
+                        # Calculate energy used during this 5-second tick
+                        energy_used_kwh = dev.power_draw_kw * (TICK_INTERVAL_SECONDS / 3600.0)
+                        dev.remaining_kwh_needed -= energy_used_kwh
+
+                        # Prevent floating point dropping below exactly zero
+                        if dev.remaining_kwh_needed <= 0:
+                            dev.remaining_kwh_needed = 0
+                            dev.is_on = False
+
+            # 4. Apply the battery physics using the Brain's output
             facility.apply_decision(decision.battery_kw, dt_seconds=TICK_INTERVAL_SECONDS)
             facility.accumulate_stats(solar.power_kw, decision.grid_kw, dt_seconds=TICK_INTERVAL_SECONDS)
 
             grid = facility.get_grid(decision.grid_kw)
 
+            # Reconcile the zone breakdown with the true total. consumption_kw is
+            # base load + any shiftable device the brain switched on this tick, so
+            # the zones must include those devices too — otherwise the bars sum to
+            # the base load only and the shifted load is invisible on the dashboard.
+            now = datetime.now(timezone.utc)
+            zones = dict(base_consumption.zones)
+            for dev in system_devices:
+                if dev.is_on:
+                    zones[dev.name] = round(dev.power_draw_kw, 2)
+
+            # Compact per-device status so the UI can show WHAT is being shifted
+            # and why (urgency capped so a past-deadline inf stays valid JSON).
+            devices_status = [
+                {
+                    "name": dev.name,
+                    "on": dev.is_on,
+                    "remaining_kwh": round(dev.remaining_kwh_needed, 1),
+                    "urgency": 0.0 if dev.is_fulfilled else round(min(dev.urgency(now), 99.9), 2),
+                }
+                for dev in system_devices
+            ]
+
+            # 5. Save the snapshot for the dashboard charts
             snap = {
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": now.isoformat(),
                 "solar_kw": solar.power_kw,
                 "battery_soc": facility.battery_soc,
                 "battery_kw": decision.battery_kw,
                 "grid_import_kw": grid.import_kw,
                 "grid_export_kw": grid.export_kw,
-                "consumption_kw": consumption.total_kw,
-                "zones": consumption.zones,
+                "consumption_kw": decision.consumption_kw,  # base load + active shiftable
+                "zones": zones,                             # now reconciles with consumption_kw
+                "devices": devices_status,                  # flexible loads the brain controls
                 "action": decision.action.value,
                 "reason": decision.reason,
                 "co2_saved_kg": facility.co2_saved_kg,
@@ -144,20 +211,17 @@ async def _control_loop():
             }
 
             database.insert_snapshot(snap)
-            # Report solar fraction over a stable trailing window (now that this
-            # tick is persisted), not the since-restart counter that reads a
-            # misleading 100% at startup. Fall back to the counter until there's
-            # enough windowed data.
+            # Report solar fraction over a stable trailing window (survives restart),
+            # not the since-restart counter that reads a misleading 100% at startup.
             windowed = database.solar_fraction_window(minutes=60)
             if windowed is not None:
                 snap["solar_fraction"] = windowed
-            latest_snapshot = snap
+            latest_snapshot = snap          # <-- publish it for /api/live (was dropped)
 
         except Exception as e:
             print(f"[control loop error] {e}")
 
         await asyncio.sleep(TICK_INTERVAL_SECONDS)
-
 
 async def _forecast_refresh_loop():
     """Refresh weather forecast every 30 minutes."""
