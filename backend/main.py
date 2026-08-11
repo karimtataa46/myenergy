@@ -70,6 +70,16 @@ _forecast_lock = threading.Lock()
 TICK_INTERVAL_SECONDS = 5
 FORECAST_REFRESH_MINUTES = 30
 
+# Facility tariff (EUR/kWh) — simple two-tier. Named constants (no more magic
+# numbers) so the brain can reason about the real spread for arbitrage.
+PEAK_TARIFF_EUR_KWH = 0.28       # 07:00–22:00
+OFFPEAK_TARIFF_EUR_KWH = 0.12    # 22:00–07:00
+
+# Peak-demand ceiling (kW). The daytime base load naturally peaks ~90 kW; hold
+# flexible loads + battery charging under this so night-time arbitrage never sets
+# a NEW, higher monthly demand peak (which carries its own €/kW charge).
+DEMAND_TARGET_KW = 95.0
+
 # ── Lifespan: start background tasks ─────────────────────────────────────────
 
 @asynccontextmanager
@@ -105,7 +115,9 @@ system_devices = [
         is_on=False,
         must_finish_by=datetime.now(timezone.utc) + timedelta(hours=12),  # Needs to be ready in 12 hours
         remaining_kwh_needed=40.0,  # Needs 40 kWh total
-        is_interruptible=True
+        is_interruptible=True,
+        min_on_minutes=10.0,   # don't rapid-cycle the charger
+        min_off_minutes=8.0,
     ),
     ShiftableDevice(
         id="water_heater",
@@ -114,7 +126,9 @@ system_devices = [
         is_on=False,
         must_finish_by=datetime.now(timezone.utc) + timedelta(hours=4),
         remaining_kwh_needed=10.0,
-        is_interruptible=False  # Once started, don't stop until finished
+        is_interruptible=False,  # Once started, don't stop until finished
+        min_on_minutes=15.0,     # heater element: avoid thermal short-cycling
+        min_off_minutes=10.0,
     )
 ]
 
@@ -124,6 +138,7 @@ async def _control_loop():
     global latest_snapshot
     while True:
         try:
+            now = datetime.now(timezone.utc)
             with _forecast_lock:
                 fc = forecast_cache[:]
 
@@ -134,7 +149,8 @@ async def _control_loop():
             # Use your old total consumption as the "Base Load" (stuff we can't turn off)
             base_consumption = facility.get_consumption()
             upcoming = weather_module.get_upcoming_solar(fc, from_now_hours=2) if fc else 0.0
-            tariff = 0.28 if 7 <= datetime.now(timezone.utc).hour < 22 else 0.12
+            is_peak = 7 <= now.hour < 22
+            tariff = PEAK_TARIFF_EUR_KWH if is_peak else OFFPEAK_TARIFF_EUR_KWH
 
             # 2. Feed the new inputs to the Brain
             decision = brain.decide(BrainInput(
@@ -144,23 +160,28 @@ async def _control_loop():
                 shiftable_devices=system_devices,
                 upcoming_solar_kw=upcoming,
                 current_tariff_eur_kwh=tariff,
+                peak_price_eur_kwh=PEAK_TARIFF_EUR_KWH,
+                offpeak_price_eur_kwh=OFFPEAK_TARIFF_EUR_KWH,
+                demand_target_kw=DEMAND_TARGET_KW,
             ))
 
-            # 3. Apply device commands and tick down their required energy!
+            # 3. Apply device commands and tick down their required energy.
             for dev in system_devices:
-                if not dev.is_fulfilled:
-                    # Turn on or off based on the brain's command
-                    dev.is_on = decision.device_commands.get(dev.id, False)
+                if dev.is_fulfilled:
+                    continue
+                cmd = decision.device_commands.get(dev.id, False)
+                if cmd != dev.is_on:                     # state actually flipped
+                    dev.is_on = cmd
+                    dev.last_change_at = now             # start the min-runtime clock
 
-                    if dev.is_on:
-                        # Calculate energy used during this 5-second tick
-                        energy_used_kwh = dev.power_draw_kw * (TICK_INTERVAL_SECONDS / 3600.0)
-                        dev.remaining_kwh_needed -= energy_used_kwh
-
-                        # Prevent floating point dropping below exactly zero
-                        if dev.remaining_kwh_needed <= 0:
-                            dev.remaining_kwh_needed = 0
-                            dev.is_on = False
+                if dev.is_on:
+                    # Energy used during this tick
+                    energy_used_kwh = dev.power_draw_kw * (TICK_INTERVAL_SECONDS / 3600.0)
+                    dev.remaining_kwh_needed -= energy_used_kwh
+                    if dev.remaining_kwh_needed <= 0:    # task complete
+                        dev.remaining_kwh_needed = 0
+                        dev.is_on = False
+                        dev.last_change_at = now
 
             # 4. Apply the battery physics using the Brain's output
             facility.apply_decision(decision.battery_kw, dt_seconds=TICK_INTERVAL_SECONDS)
@@ -172,7 +193,6 @@ async def _control_loop():
             # base load + any shiftable device the brain switched on this tick, so
             # the zones must include those devices too — otherwise the bars sum to
             # the base load only and the shifted load is invisible on the dashboard.
-            now = datetime.now(timezone.utc)
             zones = dict(base_consumption.zones)
             for dev in system_devices:
                 if dev.is_on:
@@ -239,7 +259,7 @@ async def _refresh_forecast():
     print(f"[weather] got {len(fc)} hourly forecasts")
 
 
-# ── API endpoints ─────────────────────────────────────────────────────────────
+# ---- API endpoints ------------------------
 
 @app.get("/")
 async def root():
@@ -286,14 +306,14 @@ async def get_savings():
     return await asyncio.to_thread(savings_module.month_to_date)
 
 
-# ── Live simulation session (per-second savings from the real engine) ────────
+# -- Live simulation session (per-second savings from the real engine) ------
 
 @app.get("/sim")
 async def sim_page():
     return _page("sim.html")
 
 
-# ── Per-user estimate: user enters their facility, gets their own savings ────
+#  Per-user estimate: user enters their facility, gets their own savings
 
 @app.get("/estimate")
 async def estimate_page():
@@ -315,7 +335,7 @@ async def api_estimate(inp: EstimateIn):
     )
 
 
-# ── Live per-user facility dashboard (the /estimate → live view) ─────────────
+#  Live per-user facility dashboard (the /estimate -> live view)
 
 @app.get("/facility")
 async def facility_page():

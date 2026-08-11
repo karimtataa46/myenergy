@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict
+from typing import Dict, Optional
 
 
 class GridAction(str, Enum):
@@ -92,10 +92,32 @@ class ShiftableDevice:
     remaining_kwh_needed: float  # How much energy is left to fulfill the task
     is_interruptible: bool  # Can we turn it off mid-cycle?
 
+    # Equipment protection — real motors/heaters/chargers can't be switched every
+    # few seconds. Once ON, stay on for min_on_minutes; once OFF, wait
+    # min_off_minutes before restarting. last_change_at is stamped by the control
+    # loop each time the device actually flips state. Defaults = 0 → no locking.
+    min_on_minutes: float = 0.0
+    min_off_minutes: float = 0.0
+    last_change_at: Optional[datetime] = None
+
     @property
     def is_fulfilled(self) -> bool:
         """True if the device has received all the energy it needs."""
         return self.remaining_kwh_needed <= 0.0
+
+    def _minutes_in_state(self, now: datetime) -> float:
+        """Minutes since the device last changed on/off state (inf if never)."""
+        if self.last_change_at is None:
+            return float('inf')
+        return (now - self.last_change_at).total_seconds() / 60.0
+
+    def locked_on(self, now: datetime) -> bool:
+        """Recently switched ON — must stay on to avoid short-cycling the hardware."""
+        return self.is_on and self._minutes_in_state(now) < self.min_on_minutes
+
+    def locked_off(self, now: datetime) -> bool:
+        """Recently switched OFF — must wait before restarting."""
+        return (not self.is_on) and self._minutes_in_state(now) < self.min_off_minutes
 
     def urgency(self, current_time: datetime) -> float:
         """

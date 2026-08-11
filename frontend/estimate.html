@@ -3,148 +3,227 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>myEnergy — Your Savings</title>
+<title>myEnergy · Your Savings</title>
 <style>
   :root{
-    --bg:#060708; --card:#101216; --card2:#171A20; --border:#23272F;
-    --text:#F4F6F8; --muted:#6E7787;
-    --green:#15E6A0; --amber:#FFB72B; --coral:#FF4E6A; --cyan:#36D7F2; --violet:#A472FF;
+    --bg:#000000; --panel:#0a0c0f; --panel2:#111418; --line:#1c2027;
+    --text:#ffffff; --muted:#8b93a1; --faint:#565e6b;
+    --green:#19E39A; --cyan:#3BE0F0; --coral:#FF4E6A; --amber:#FFB72B;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);min-height:100vh;
+  html,body{overflow-x:hidden}
+  body{
+    background:var(--bg);color:var(--text);min-height:100vh;
     font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;
-    background-image:radial-gradient(900px 500px at 50% -8%, rgba(21,230,160,0.10), transparent 70%);
-    background-attachment:fixed}
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    position:relative;
+  }
+  /* living aurora — slow drifting light behind everything */
+  body::before{
+    content:'';position:fixed;inset:-25%;z-index:-2;pointer-events:none;
+    background:
+      radial-gradient(38% 38% at 18% 12%, rgba(25,227,154,.20), transparent 62%),
+      radial-gradient(34% 34% at 86% 16%, rgba(59,224,240,.15), transparent 62%),
+      radial-gradient(46% 46% at 62% 96%, rgba(25,227,154,.12), transparent 62%);
+    filter:blur(26px);
+    animation:drift 20s ease-in-out infinite alternate;
+  }
+  @keyframes drift{
+    0%{transform:translate3d(0,0,0) scale(1)}
+    100%{transform:translate3d(0,-3.5%,0) scale(1.09)}
+  }
   ::-webkit-scrollbar{width:0}
-  header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border)}
-  .logo{font-size:18px;font-weight:800;letter-spacing:-.5px}.logo span{color:var(--green)}
-  .btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;
-    padding:8px 13px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none}
-  main{max-width:600px;margin:0 auto;padding:22px 18px 90px;display:flex;flex-direction:column;gap:18px}
-  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:700}
-  h1{font-size:30px;font-weight:800;letter-spacing:-1px;margin:6px 0 4px}
-  .lede{font-size:14px;color:var(--muted);line-height:1.55}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:22px}
 
-  /* form */
-  .field{margin-bottom:16px}
-  .field label{display:block;font-size:12px;font-weight:700;letter-spacing:.3px;margin-bottom:7px}
-  .field .hint{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
-  .field input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;
-    color:var(--text);font-family:inherit;font-size:16px;padding:13px 14px;outline:none}
-  .field input:focus{border-color:var(--green)}
-  .cities{position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--card2);
-    border:1px solid var(--border);border-radius:12px;margin-top:6px;overflow:hidden;display:none;
-    max-height:290px;overflow-y:auto;box-shadow:0 12px 30px rgba(0,0,0,.5)}
-  .cities .ci{padding:11px 14px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;
-    gap:8px;align-items:center;border-bottom:1px solid var(--border)}
+  /* ── top bar ── */
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:20px clamp(18px,5vw,42px);
+    position:relative;z-index:2;
+  }
+  .logo{font-size:19px;font-weight:800;letter-spacing:-.6px}
+  .logo span{color:var(--green)}
+  .ghost{
+    color:var(--muted);text-decoration:none;font-size:13px;font-weight:600;
+    padding:9px 15px;border:1px solid var(--line);border-radius:100px;
+    transition:color .2s,border-color .2s,background .2s;
+  }
+  .ghost:hover{color:var(--text);border-color:#333a45;background:rgba(255,255,255,.03)}
+
+  /* ── layout ── */
+  main{
+    max-width:1080px;margin:0 auto;
+    padding:clamp(28px,6vw,72px) clamp(18px,5vw,42px) 90px;
+    display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(28px,5vw,64px);
+    align-items:center;
+  }
+  @media(max-width:860px){
+    main{grid-template-columns:1fr;gap:34px;align-items:stretch}
+  }
+
+  /* ── hero copy ── */
+  .eyebrow{
+    font-size:12px;letter-spacing:3.5px;text-transform:uppercase;
+    color:var(--faint);font-weight:700;margin-bottom:22px;
+  }
+  h1{
+    font-size:clamp(46px,7.2vw,86px);font-weight:800;
+    letter-spacing:-.035em;line-height:.96;margin-bottom:26px;
+  }
+  h1 .accent{
+    background:linear-gradient(100deg,var(--green),var(--cyan),var(--green));
+    background-size:220% 100%;-webkit-background-clip:text;background-clip:text;
+    color:transparent;animation:sheen 7s linear infinite;
+  }
+  @keyframes sheen{to{background-position:-220% 0}}
+  .lede{
+    font-size:clamp(16px,1.5vw,19px);color:var(--muted);line-height:1.6;
+    max-width:30ch;
+  }
+  .lede b{color:var(--text);font-weight:600}
+
+  /* ── form card ── */
+  .card{
+    background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0));
+    border:1px solid var(--line);border-radius:26px;
+    padding:clamp(22px,3vw,32px);
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.9);
+    backdrop-filter:blur(6px);
+  }
+  .field{margin-bottom:18px}
+  .field label{
+    display:flex;align-items:baseline;gap:8px;
+    font-size:13px;font-weight:700;letter-spacing:.2px;margin-bottom:9px;
+  }
+  .field .hint{font-size:12px;color:var(--faint);font-weight:500}
+  .field input{
+    width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+    color:var(--text);font-family:inherit;font-size:17px;font-weight:500;padding:15px 16px;outline:none;
+    transition:border-color .2s,box-shadow .2s,background .2s;
+  }
+  .field input::placeholder{color:var(--faint)}
+  .field input:focus{
+    border-color:var(--green);background:#0d1114;
+    box-shadow:0 0 0 4px rgba(25,227,154,.14);
+  }
+
+  /* autocomplete dropdown */
+  .cities{
+    position:absolute;left:0;right:0;top:100%;z-index:20;background:#0d1015;
+    border:1px solid var(--line);border-radius:14px;margin-top:8px;
+    max-height:300px;overflow-y:auto;display:none;
+    box-shadow:0 20px 44px rgba(0,0,0,.6);
+  }
+  .cities .ci{
+    padding:12px 15px;cursor:pointer;font-size:14px;display:flex;
+    justify-content:space-between;gap:8px;align-items:center;
+    border-bottom:1px solid var(--line);transition:background .12s;
+  }
   .cities .ci:last-child{border-bottom:none}
-  .cities .ci:hover{background:rgba(21,230,160,0.10)}
+  .cities .ci:hover{background:rgba(25,227,154,.10)}
   .cities .ci .where{color:var(--muted);font-size:12px}
-  .cities .ci .tag{font-size:9px;padding:2px 7px;border-radius:8px;font-weight:800;white-space:nowrap}
-  .cities .ci .real{background:#10241c;color:var(--green)}
+  .cities .ci .tag{font-size:9px;padding:3px 8px;border-radius:100px;font-weight:800;white-space:nowrap}
+  .cities .ci .real{background:#0f2a20;color:var(--green)}
   .cities .ci .est{background:#2a2410;color:var(--amber)}
-  .cities .empty{padding:12px 14px;color:var(--muted);font-size:13px}
-  .go{width:100%;background:linear-gradient(135deg,var(--green),var(--cyan));color:#06120d;border:0;
-    border-radius:14px;font-family:inherit;font-size:15px;font-weight:800;padding:15px;cursor:pointer;margin-top:4px}
-  .go:disabled{opacity:.55;cursor:default}
-  .err{color:var(--coral);font-size:13px;margin-top:10px;display:none}
+  .cities .empty{padding:14px 15px;color:var(--muted);font-size:13px}
 
-  /* results */
-  #results{display:none;flex-direction:column;gap:16px}
-  .hero{text-align:center;padding:26px 20px}
-  .hero .lbl{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#4ade80;font-weight:700}
-  .hero .amt{font-size:60px;font-weight:800;letter-spacing:-3px;color:var(--green);line-height:1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
-  .hero .sub{font-size:13px;color:var(--muted)}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .stat{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;text-align:center}
-  .stat .v{font-size:22px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-  .stat .l{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
-  .vs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .vs .box{background:var(--card2);border-radius:14px;padding:14px;text-align:center}
-  .vs .box .n{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-  .vs .box .t{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
-  .facts{font-size:12.5px;color:var(--muted);line-height:1.7}
-  .facts b{color:var(--text)}
-  .note{font-size:12px;color:var(--muted);text-align:center;line-height:1.6}
-  .loading{text-align:center;color:var(--muted);font-size:13px;display:none;padding:8px}
+  /* button */
+  .go{
+    width:100%;margin-top:6px;border:0;cursor:pointer;
+    background:linear-gradient(120deg,var(--green),var(--cyan),var(--green));
+    background-size:220% 100%;color:#04120c;
+    border-radius:16px;font-family:inherit;font-size:16px;font-weight:800;
+    padding:17px;letter-spacing:.2px;
+    box-shadow:0 12px 34px -6px rgba(25,227,154,.5);
+    transition:background-position .55s ease,transform .16s ease,box-shadow .3s ease;
+  }
+  .go:hover{background-position:100% 0;transform:translateY(-2px);box-shadow:0 20px 48px -8px rgba(25,227,154,.6)}
+  .go:active{transform:translateY(0);box-shadow:0 8px 24px -6px rgba(25,227,154,.45)}
+  .go:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none}
+
+  .err{color:var(--coral);font-size:13.5px;margin-top:12px;display:none;font-weight:600}
+
+  /* trust row */
+  .trust{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:12px;font-weight:600;color:var(--muted);
+    padding:8px 13px;border:1px solid var(--line);border-radius:100px;
+    background:rgba(255,255,255,.02);
+  }
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+
+  /* loading */
+  .loading{
+    display:none;align-items:center;justify-content:center;gap:10px;
+    color:var(--muted);font-size:14px;font-weight:600;margin-top:16px;
+  }
+  .loading .ring{
+    width:16px;height:16px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.15);border-top-color:var(--green);
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* entrance motion */
+  .reveal{opacity:0;transform:translateY(18px);animation:rise .8s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){
+    .reveal{animation:none;opacity:1;transform:none}
+    body::before,h1 .accent{animation:none}
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">my<span>Energy</span></div>
-  <a class="btn" href="/">← Demo dashboard</a>
 </header>
 
 <main>
-  <div>
-    <div class="eyebrow">Your facility · your numbers</div>
-    <h1>See how much <span style="color:var(--green)">you'd</span> save</h1>
-    <div class="lede">Enter your site and we'll run the same optimiser on <b style="color:var(--text)">your</b> city's
-      weather and electricity price — no install, no sign-up.</div>
-  </div>
+  <!-- left: hero copy -->
+  <section>
+    <div class="eyebrow reveal" style="animation-delay:.02s">Your facility. Your numbers.</div>
+    <h1 class="reveal" style="animation-delay:.08s">See what<br><span class="accent">you'd</span> save.</h1>
+    <p class="lede reveal" style="animation-delay:.16s">
+      Drop in your site and we run the same optimiser on <b>your</b> city's real
+      weather and live electricity price. No install. No sign&#8209;up.
+    </p>
+  </section>
 
-  <!-- Step 4: input form -->
-  <form class="card" id="form">
+  <!-- right: input form -->
+  <form class="card reveal" id="form" style="animation-delay:.24s">
     <div class="field" style="position:relative">
-      <label>City <span class="hint">start typing, then pick from the list</span></label>
-      <input id="city" placeholder="e.g. Latakia, Munich, Lyon…" value="Munich" autocomplete="off">
+      <label>City <span class="hint">search, then pick from the list</span></label>
+      <input id="city" placeholder="Search your city" value="Munich" autocomplete="off">
       <div id="cities" class="cities"></div>
     </div>
     <div class="field">
-      <label>Solar array <span class="hint">installed size, kWp</span></label>
+      <label>Solar array <span class="hint">installed size in kWp</span></label>
       <input id="solar" type="number" min="0" value="100">
     </div>
     <div class="field">
-      <label>Battery <span class="hint">usable size, kWh</span></label>
+      <label>Battery <span class="hint">usable size in kWh</span></label>
       <input id="battery" type="number" min="1" value="200">
     </div>
     <div class="field">
-      <label>Monthly electricity use <span class="hint">kWh/month (from a bill)</span></label>
+      <label>Monthly electricity <span class="hint">kWh per month, from a bill</span></label>
       <input id="monthly" type="number" min="100" value="46920">
     </div>
-    <button class="go" id="go" type="submit">⚡ See my facility live</button>
+
+    <button class="go" id="go" type="submit">See my facility live</button>
     <div class="err" id="err"></div>
+
+    <div class="loading" id="loading"><span class="ring"></span> Building your live dashboard</div>
+
+    <div class="trust">
+      <span class="pill"><span class="dot"></span> Real city weather</span>
+      <span class="pill"><span class="dot"></span> Live electricity prices</span>
+      <span class="pill"><span class="dot"></span> Validated optimiser</span>
+    </div>
   </form>
-
-  <div class="loading" id="loading">Building your live dashboard…</div>
-
-  <!-- Step 6: results -->
-  <div id="results">
-    <div class="card hero">
-      <div class="lbl">💶 myEnergy would save you</div>
-      <div class="amt" id="r-saved">€—</div>
-      <div class="sub" id="r-sub">per month · vs a standard reactive controller, same hardware</div>
-    </div>
-
-    <div class="stats">
-      <div class="stat"><div class="v" id="r-annual" style="color:var(--cyan)">€—</div><div class="l">per year</div></div>
-      <div class="stat"><div class="v" id="r-pct" style="color:var(--amber)">—%</div><div class="l">of your bill</div></div>
-      <div class="stat"><div class="v" id="r-co2" style="color:var(--green)">— kg</div><div class="l">CO₂ avoided/mo</div></div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow" style="margin-bottom:12px">Your monthly electricity bill</div>
-      <div class="vs">
-        <div class="box"><div class="n" style="color:var(--coral)" id="r-base">€—</div><div class="t">without myEnergy</div></div>
-        <div class="box"><div class="n" style="color:var(--green)" id="r-my">€—</div><div class="t">with myEnergy</div></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow" style="margin-bottom:10px">Your facility</div>
-      <div class="facts" id="r-facts"></div>
-    </div>
-
-    <div class="note">Computed with the same validated engine that powers our
-      <a href="/" style="color:var(--cyan)">demo</a> — optimal control (LP-MPC) vs a dumb baseline on identical hardware.</div>
-  </div>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
-const euro = v => '€' + Math.round(v).toLocaleString();
 
 // ── City autocomplete: show matching cities as you type ──────────────────────
 let selectedPlace = null;               // set when the user picks from the list
@@ -160,14 +239,14 @@ cityInput.addEventListener('input', () => {
     try {
       const list = await (await fetch('/api/cities?q=' + encodeURIComponent(q))).json();
       if (!Array.isArray(list) || !list.length) {
-        citiesBox.innerHTML = '<div class="empty">No matching city — try a nearby larger one.</div>';
+        citiesBox.innerHTML = '<div class="empty">No matching city. Try a nearby larger one.</div>';
         citiesBox.style.display = 'block'; return;
       }
       citiesBox._list = list;
       citiesBox.innerHTML = list.map((c, i) => {
         const where = [c.admin1, c.country].filter(Boolean).join(', ');
         const tag = c.priced
-          ? '<span class="tag real">price ✓</span>'
+          ? '<span class="tag real">price &#10003;</span>'
           : '<span class="tag est">est. price</span>';
         return `<div class="ci" data-i="${i}"><span><b>${c.name}</b> <span class="where">${where}</span></span>${tag}</div>`;
       }).join('');
@@ -188,11 +267,12 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#city') && !e.target.closest('#cities')) citiesBox.style.display = 'none';
 });
 
+function showErr(msg){ $('err').textContent = msg; $('err').style.display = 'block'; }
+
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('err').style.display = 'none';
-  $('results').style.display = 'none';
-  $('loading').style.display = 'block';
+  $('loading').style.display = 'flex';
   $('go').disabled = true;
 
   try {
@@ -214,14 +294,13 @@ $('form').addEventListener('submit', async (e) => {
     const d = await r.json();
     if (d.error) {
       $('loading').style.display = 'none'; $('go').disabled = false;
-      $('err').textContent = d.error; $('err').style.display = 'block'; return;
+      showErr(d.error); return;
     }
     window.location = '/facility?session=' + encodeURIComponent(d.session);
   } catch (err) {
     $('loading').style.display = 'none';
     $('go').disabled = false;
-    $('err').textContent = 'Something went wrong — try again.';
-    $('err').style.display = 'block';
+    showErr('Something went wrong. Try again.');
   }
 });
 </script>
