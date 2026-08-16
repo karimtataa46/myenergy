@@ -73,7 +73,6 @@ docker build -t myenergy .
 docker run -p 8000:8000 myenergy
 ```
 
-The app is then served at `http://localhost:8000`.
 
 ## Run it without Docker
 
