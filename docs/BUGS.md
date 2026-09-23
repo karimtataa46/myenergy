@@ -8,7 +8,7 @@ the detail → a row is added here → the fix lands → a **regression test** l
 so it can never silently return → the issue is closed.
 
 **Status:** 8 logged, 8 fixed. 2 caught by the automated test suite, 6 by manual
-review during development (before the suite existed — which is exactly why the
+review during development (before the suite existed which is exactly why the
 suite is being built now).
 
 ### Severity
