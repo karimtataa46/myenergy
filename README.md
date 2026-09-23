@@ -84,17 +84,34 @@ cd backend
 uvicorn main:app --port 8000
 ```
 
-## Tests
+## Testing
 
-The decision making is verified, not assumed:
+An automated test suite runs on every push via **GitHub Actions** (the badge above is
+live). It covers the full test pyramid:
+
+| Layer | What it checks | Tools |
+|-------|----------------|-------|
+| **Unit** | decision rules, engine physics, pricing, models, forecast maths | pytest, fixtures, `parametrize` |
+| **Integration** | services wired together, Open-Meteo HTTP calls mocked | `monkeypatch` test doubles |
+| **API** | every endpoint, happy paths and error / 422 paths | FastAPI `TestClient` |
+| **E2E** | the `/estimate` flow driven in a real headless browser | Playwright |
+
+**152 automated checks** (101 pytest, plus 39 engine and 12 optimiser proofs), with a
+coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
+guarded by a regression test, and recorded in the [defect log](docs/BUGS.md).
+
+Run it locally:
 
 ```bash
-cd simulation && python3 verify_simulation.py   # physics and hand computed answers
-cd simulation && python3 test_decisions.py      # optimiser vs an independent brute force search
-cd backend    && python3 test_energy_logic.py   # demand cap, arbitrage gate, device rules
-cd backend    && python3 test_livesim.py        # the /sim engine input and output
+pip install -r requirements-dev.txt
+playwright install chromium              # once, for the browser E2E tests
+pytest                                   # run everything
+pytest --cov=backend --cov=simulation    # with a coverage report
+pytest -m "not e2e"                      # skip the slow browser tests
 ```
 
 ## Tech stack
 
 Python, FastAPI, Docker, SciPy (linear programming), SQLite, Open-Meteo, vanilla JavaScript.
+
+**Testing and CI:** pytest, pytest-cov, FastAPI TestClient, Playwright, GitHub Actions.
