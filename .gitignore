@@ -21,3 +21,5 @@ data/*.sqlite3
 .DS_Store
 .idea/
 .vscode/
+.coverage
+htmlcov/
