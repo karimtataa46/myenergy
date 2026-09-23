@@ -128,6 +128,12 @@ class ShiftableDevice:
         if self.is_fulfilled:
             return 0.0
 
+        # A device that draws no power can never make progress toward its target,
+        # so it is effectively unschedulable. Guard the division below and treat it
+        # as maximally urgent instead of crashing the control loop (bug #10).
+        if self.power_draw_kw <= 0:
+            return float('inf')
+
         hours_left = (self.must_finish_by - current_time).total_seconds() / 3600.0
 
         # If the deadline is now or in the past, it's critically urgent
