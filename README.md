@@ -1,5 +1,7 @@
 # ⚡ myEnergy
 
+[![tests](https://github.com/karimtataa46/myenergy/actions/workflows/tests.yml/badge.svg)](https://github.com/karimtataa46/myenergy/actions/workflows/tests.yml)
+
 **Predictive energy management for factories with solar and battery storage.**
 
 myEnergy reads a facility's solar inverter, battery and grid meter and decides, every
