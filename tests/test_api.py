@@ -99,3 +99,16 @@ class TestFacilitySession:
             "city": "   ", "solar_kwp": 100, "battery_kwh": 200, "monthly_kwh": 46920})
         assert r.status_code == 200
         assert "error" in r.json()
+
+
+class TestSimSession:
+    """The /sim page's accelerated savings session endpoints."""
+
+    def test_reset_then_live(self, client):
+        r = client.post("/api/sim/reset", params={"session": "sim-test-1"})
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
+
+        r2 = client.get("/api/sim/live", params={"session": "sim-test-1", "speed": 1.0})
+        assert r2.status_code == 200
+        assert isinstance(r2.json(), dict)
