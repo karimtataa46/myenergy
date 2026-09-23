@@ -108,3 +108,43 @@ def client(mock_network, monkeypatch):
 
     with TestClient(main.app) as c:
         yield c
+
+
+@pytest.fixture
+def live_server(mock_network):
+    """Run the REAL app in a background thread (network mocked) and yield its URL.
+    E2E browser tests need a genuinely running server to hit, not the in-process
+    TestClient."""
+    import socket
+    import threading
+    import time
+    import uvicorn
+    import main
+
+    # pick a free port
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    config = uvicorn.Config(main.app, host="127.0.0.1", port=port,
+                            log_level="warning", loop="asyncio", http="h11")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    # wait until it accepts connections
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    else:
+        raise RuntimeError("live server did not start in time")
+
+    yield f"http://127.0.0.1:{port}"
+
+    server.should_exit = True
+    thread.join(timeout=5)

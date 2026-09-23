@@ -24,6 +24,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Install Playwright browser (for the E2E tests)
+        run: python -m playwright install --with-deps chromium
+
       - name: Run pytest with coverage
         run: |
           pytest --cov=backend --cov=simulation \
