@@ -7,7 +7,7 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 7 logged, 7 fixed. 1 caught by the automated test suite, 6 by manual
+**Status:** 8 logged, 8 fixed. 2 caught by the automated test suite, 6 by manual
 review during development (before the suite existed — which is exactly why the
 suite is being built now).
 
@@ -23,6 +23,7 @@ suite is being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#11](https://github.com/karimtataa46/myenergy/issues/11) | Low | `estimate_service.py` | Monthly and annual savings didn't reconcile (€887/mo shown as €10,650/yr, not €10,644) | **automated test** (`test_annual_is_twelve_times_monthly`) | ✅ Fixed | `d08695b` |
 | [#10](https://github.com/karimtataa46/myenergy/issues/10) | High | `models.py` | `urgency()` raised `ZeroDivisionError` for a device with `power_draw_kw = 0` | **automated test** (`test_zero_power_does_not_crash`) | ✅ Fixed | `d1592b6` |
 | B-06 | Critical | `models.py` | `urgency()` was wrongly decorated `@property` but takes a `current_time` argument → `TypeError` crashed the control loop every tick, blanking `/api/live` | manual review | ✅ Fixed | `62190fc` |
 | B-05 | Critical | `main.py` | Control loop dropped the `latest_snapshot = snap` publish line → `/api/live` returned `{}` permanently (dead dashboard) | manual debugging | ✅ Fixed | `62190fc` |
