@@ -58,3 +58,53 @@ def make_input(make_solar, make_battery):
             peak_price_eur_kwh=peak, offpeak_price_eur_kwh=offpeak,
             demand_target_kw=demand)
     return _make
+
+
+# ── network mocks + API client (for the T2 integration and T3 API tests) ──────
+# The app talks to Open-Meteo through exactly two functions: pricing_service
+# (resolve_city / search_cities) for geocoding, and weather.fetch_forecast for
+# the forecast. We replace those with offline stand-ins so every test is fast,
+# deterministic and needs no network — the essence of a "test double".
+
+@pytest.fixture
+def fake_place():
+    import pricing_service
+    return pricing_service.Place(name="Munich", country="Germany",
+                                 country_code="DE", latitude=48.14, longitude=11.58)
+
+
+@pytest.fixture
+def mock_network(monkeypatch, fake_place):
+    import weather
+    import pricing_service
+
+    # forecast -> the offline clear-sky model instead of a real HTTP call
+    monkeypatch.setattr(weather, "fetch_forecast",
+                        lambda *a, **k: weather._synthetic_forecast(*a, **k))
+
+    # geocoding -> a fixed Munich/DE place (None for a blank query)
+    monkeypatch.setattr(pricing_service, "resolve_city",
+                        lambda city: fake_place if city and city.strip() else None)
+
+    def _search(q, count=8):
+        if not q or len(q.strip()) < 2:
+            return []
+        return [{"name": "Munich", "admin1": "Bavaria", "country": "Germany",
+                 "country_code": "DE", "latitude": 48.14, "longitude": 11.58,
+                 "priced": True}]
+    monkeypatch.setattr(pricing_service, "search_cities", _search)
+    return fake_place
+
+
+@pytest.fixture
+def client(mock_network, monkeypatch):
+    """FastAPI TestClient with the network mocked and DB writes suppressed.
+    Used as a context manager so the app's lifespan (startup/shutdown) runs."""
+    import main
+    import database
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(database, "insert_snapshot", lambda snap: None)
+
+    with TestClient(main.app) as c:
+        yield c
