@@ -29,6 +29,26 @@ class TestCriticalBattery:
         d = brain.decide(make_input(base=90, soc=16, tariff=0.28))
         assert "critical" not in d.reason.lower()
 
+    # Regression tests for bug #12: "protect" must mean "don't discharge",
+    # not "don't charge". A drained battery has to be refilled.
+
+    def test_critical_battery_recharges_at_cheap_rate(self, make_input):
+        d = brain.decide(make_input(base=30, soc=10, tariff=0.12))
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_GRID
+        assert d.battery_kw > 0
+
+    def test_critical_battery_charges_from_solar_surplus(self, make_input):
+        d = brain.decide(make_input(base=20, solar=60, soc=10, tariff=0.28))
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_SOLAR
+        assert d.battery_kw > 0
+
+    def test_below_reserve_refills_even_if_spread_too_thin(self, make_input):
+        # Arbitrage alone wouldn't pay here, but an empty battery is a
+        # reliability problem, so it still refills to the reserve.
+        d = brain.decide(make_input(base=30, soc=10, tariff=0.26, peak=0.28, offpeak=0.26))
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_GRID
+        assert "reserve" in d.reason.lower()
+
 
 class TestSolarSurplus:
     """Rule 2: more solar than load -> store it, or export once the battery is full."""

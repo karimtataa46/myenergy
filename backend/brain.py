@@ -154,8 +154,11 @@ def decide(inp: BrainInput) -> EnergyDecision:
     # STAGE 2: BATTERY & GRID DISPATCH
     # =========================================================================
 
-    # Rule 1: Battery critical — protect at all costs
-    if soc <= BATTERY_CRITICAL_SOC:
+    # Rule 1: Battery critical: never DISCHARGE it. Charging is still wanted, so
+    # when there is a solar surplus or the cheap rate applies, fall through to the
+    # charging rules below. (Bug #12: this used to return unconditionally, so a
+    # drained battery was never refilled.)
+    if soc <= BATTERY_CRITICAL_SOC and net_solar <= 0 and not is_offpeak:
         return EnergyDecision(
             timestamp=now,
             action=GridAction.GRID_IMPORT,
@@ -203,11 +206,20 @@ def decide(inp: BrainInput) -> EnergyDecision:
     if is_offpeak:
         charge_headroom = max(0.0, inp.demand_target_kw - deficit)   # room under the cap
         charge_kw = min(bat.max_charge_kw, charge_headroom)
-        if (not bat.is_full) and arbitrage_ok and charge_kw > 0.5:
+        # A battery below its reserve is a reliability problem, not an arbitrage
+        # bet: refill it at the cheap rate even if the spread alone wouldn't pay.
+        below_reserve = soc < BATTERY_RESERVE_SOC
+        if (not bat.is_full) and (arbitrage_ok or below_reserve) and charge_kw > 0.5:
+            if arbitrage_ok:
+                reason = (f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€) — pre-charging "
+                          f"{charge_kw:.0f}kW (net-positive after losses)")
+            else:
+                reason = (f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€): battery below its "
+                          f"reserve ({soc:.0f}%), refilling {charge_kw:.0f}kW")
             return EnergyDecision(
                 timestamp=now,
                 action=GridAction.BATTERY_CHARGE_FROM_GRID,
-                reason=f"Off-peak ({inp.current_tariff_eur_kwh:.2f}€) — pre-charging {charge_kw:.0f}kW (net-positive after losses)",
+                reason=reason,
                 solar_kw=solar,
                 battery_kw=charge_kw,
                 grid_kw=deficit + charge_kw,
