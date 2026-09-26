@@ -51,14 +51,14 @@ def make_device():
 def make_input(make_solar, make_battery):
     def _make(base=90.0, devices=(), tariff=0.28, solar=0.0, soc=60.0,
               peak=0.28, offpeak=0.12, demand=float("inf"), upcoming=0.0,
-              planned=None, plan_reason=""):
+              planned=None, planned_grid=0.0, plan_reason=""):
         return brain.BrainInput(
             solar=make_solar(solar), battery=make_battery(soc),
             base_load_kw=base, shiftable_devices=list(devices),
             upcoming_solar_kw=upcoming, current_tariff_eur_kwh=tariff,
             peak_price_eur_kwh=peak, offpeak_price_eur_kwh=offpeak,
             demand_target_kw=demand, planned_battery_kw=planned,
-            plan_reason=plan_reason)
+            planned_grid_charge_kw=planned_grid, plan_reason=plan_reason)
     return _make
 
 

@@ -74,6 +74,7 @@ class BrainInput:
     # Battery setpoint from the forecast planner (planner.py). When set, Stage 2
     # follows the plan inside the safety envelope instead of the rules below.
     planned_battery_kw: Optional[float] = None
+    planned_grid_charge_kw: float = 0.0   # part of the planned charging meant to come from the grid
     plan_reason: str = ""
 
 
@@ -294,6 +295,7 @@ def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
     bat = inp.battery
     planned = max(-bat.max_discharge_kw, min(bat.max_charge_kw, inp.planned_battery_kw))
     deficit = total_load - solar                 # grid needed before the battery (<0 = surplus)
+    surplus = max(-deficit, 0.0)
 
     if planned < 0:
         if bat.soc_percent <= BATTERY_RESERVE_SOC:
@@ -304,10 +306,14 @@ def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
         if bat.is_full:
             planned = 0.0
         else:
+            # Follow the plan's intent: charging it meant to take from the sun
+            # comes only from the surplus that exists right now, and it buys from
+            # the grid only as much as it meant to buy. A forecast that was a bit
+            # too sunny must never turn into buying peak-price power (bug #15).
+            planned = min(planned, surplus + max(inp.planned_grid_charge_kw, 0.0))
             planned = max(0.0, min(planned, inp.demand_target_kw - deficit))  # demand cap
 
     grid_kw = deficit + planned
-    surplus = max(-deficit, 0.0)
     if planned > 0.5:
         if planned <= surplus + 1e-6:
             action = GridAction.EXPORT_TO_GRID if grid_kw < -0.5 else GridAction.BATTERY_CHARGE_FROM_SOLAR
@@ -324,7 +330,10 @@ def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
 
     reason = inp.plan_reason or "Following the forecast plan"
     if abs(planned - inp.planned_battery_kw) > 0.5:
-        reason += " (limited by the safety envelope)"
+        if planned > 0.5 and planned <= surplus + 1e-6:
+            reason = f"Storing {planned:.0f} kW of free solar surplus, all that's available right now"
+        else:
+            reason += " (limited by the safety envelope)"
 
     return EnergyDecision(
         timestamp=now,

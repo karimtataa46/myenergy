@@ -35,4 +35,5 @@ def decide(inp: brain.BrainInput, forecast: Optional[PlanningForecast],
     if plan is None:
         return brain.decide(inp)          # no forecast or solver failure: rules
     return brain.decide(replace(inp, planned_battery_kw=plan.battery_kw,
+                                planned_grid_charge_kw=plan.grid_charge_now_kw,
                                 plan_reason=plan.reason))

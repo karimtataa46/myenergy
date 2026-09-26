@@ -152,7 +152,7 @@ class TestFollowPlan:
     """Stage 2 with a planner setpoint: follow it, but inside the safety envelope."""
 
     def test_follows_a_charge_plan(self, make_input):
-        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=30,
+        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=30, planned_grid=30,
                                     plan_reason="Buying 30 kW at €0.12"))
         assert d.battery_kw == pytest.approx(30)
         assert d.action == GridAction.BATTERY_CHARGE_FROM_GRID
@@ -173,8 +173,20 @@ class TestFollowPlan:
         assert d.battery_kw == pytest.approx(-20)
         assert d.grid_kw == pytest.approx(0)
 
+    def test_solar_plan_never_buys_peak_grid_when_the_sun_falls_short(self, make_input):
+        # Regression for bug #15. The plan expected enough surplus to store 50 kW
+        # from the sun, but live there is only 24 kW. Store the 24, don't buy the
+        # other 26 at the peak price.
+        d = brain.decide(make_input(base=40, solar=64, soc=60, tariff=0.28, planned=50,
+                                    planned_grid=0, plan_reason="Storing 50 kW of free solar surplus"))
+        assert d.battery_kw == pytest.approx(24)
+        assert d.grid_kw == pytest.approx(0)
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_SOLAR
+        assert "24 kW" in d.reason
+
     def test_demand_cap_limits_grid_charging(self, make_input):
-        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=50, demand=40))
+        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=50, planned_grid=50,
+                                    demand=40))
         assert d.battery_kw == pytest.approx(13)
         assert d.grid_kw <= 40 + 1e-6
 
