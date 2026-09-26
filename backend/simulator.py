@@ -79,10 +79,14 @@ class FacilitySimulator:
             max_discharge_kw=BATTERY_MAX_DISCHARGE_KW,
         )
 
+    def expected_load_kw(self, hour: int) -> float:
+        """Expected base consumption for an hour of day (production slows at night).
+        The single source for both the simulated readings and the load forecast."""
+        return TOTAL_BASE_CONSUMPTION_KW * (1.0 if 6 <= hour <= 22 else 0.3)
+
     def get_consumption(self) -> ConsumptionReading:
         now = datetime.now(timezone.utc)
-        # Production slows at night
-        scale = 1.0 if 6 <= now.hour <= 22 else 0.3
+        scale = self.expected_load_kw(now.hour) / TOTAL_BASE_CONSUMPTION_KW
         noise = random.uniform(0.95, 1.05)
         zones = {k: round(v * scale * noise, 2) for k, v in ZONES.items()}
         return ConsumptionReading(

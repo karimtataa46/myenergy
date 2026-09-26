@@ -148,6 +148,41 @@ class TestDeviceScheduling:
         assert d.device_commands["u"] is True
 
 
+class TestFollowPlan:
+    """Stage 2 with a planner setpoint: follow it, but inside the safety envelope."""
+
+    def test_follows_a_charge_plan(self, make_input):
+        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=30,
+                                    plan_reason="Buying 30 kW at €0.12"))
+        assert d.battery_kw == pytest.approx(30)
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_GRID
+        assert d.reason == "Buying 30 kW at €0.12"
+
+    def test_charging_from_surplus_is_labelled_solar(self, make_input):
+        d = brain.decide(make_input(base=20, solar=60, soc=60, planned=40))
+        assert d.action == GridAction.BATTERY_CHARGE_FROM_SOLAR
+
+    def test_never_drains_below_the_reserve(self, make_input):
+        d = brain.decide(make_input(base=90, soc=18, planned=-40))
+        assert d.battery_kw == 0.0
+        assert "safety envelope" in d.reason
+
+    def test_never_discharges_into_the_grid(self, make_input):
+        # load is only 20 kW, so discharging 50 kW would export 30 kW of battery
+        d = brain.decide(make_input(base=20, soc=60, planned=-50))
+        assert d.battery_kw == pytest.approx(-20)
+        assert d.grid_kw == pytest.approx(0)
+
+    def test_demand_cap_limits_grid_charging(self, make_input):
+        d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=50, demand=40))
+        assert d.battery_kw == pytest.approx(13)
+        assert d.grid_kw <= 40 + 1e-6
+
+    def test_full_battery_is_not_charged(self, make_input):
+        d = brain.decide(make_input(base=27, soc=96, tariff=0.12, planned=30))
+        assert d.battery_kw == 0.0
+
+
 class TestMinRuntimeInBrain:
     """Stage 1 respects the device min-runtime locks."""
 

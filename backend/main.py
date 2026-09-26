@@ -21,17 +21,20 @@ from pathlib import Path
 import database
 import weather as weather_module
 import simulator as sim_module
-import brain
 import savings as savings_module
 import live_sim as live_sim_module
 import estimate_service
 import facility_live
 import pricing_service
+import energy_manager
+import factory as F
+from dataclasses import replace
+from engine import HORIZON_HOURS
 from live_sim import live_sim
 from brain import BrainInput
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
-from models import ShiftableDevice
+from models import ShiftableDevice, PlanningForecast
 
 
 class EstimateIn(BaseModel):
@@ -79,6 +82,10 @@ OFFPEAK_TARIFF_EUR_KWH = 0.12    # 22:00–07:00
 # flexible loads + battery charging under this so night-time arbitrage never sets
 # a NEW, higher monthly demand peak (which carries its own €/kW charge).
 DEMAND_TARGET_KW = 95.0
+
+# The demo facility as the forecast planner sees it (same prices as above).
+DEMO_CFG = replace(F.DEFAULT_CONFIG, peak_tariff=PEAK_TARIFF_EUR_KWH,
+                   offpeak_tariff=OFFPEAK_TARIFF_EUR_KWH)
 
 # ── Lifespan: start background tasks ─────────────────────────────────────────
 
@@ -133,6 +140,23 @@ system_devices = [
 ]
 
 
+def _planning_forecast(fc, now) -> Optional[PlanningForecast]:
+    """
+    The full hourly forecast for the planner: expected solar and load for each of
+    the coming hours, starting with the current one. None if there's no forecast
+    (the decision then falls back to the rule engine).
+    """
+    hour0 = now.replace(minute=0, second=0, microsecond=0)
+    hours = [f for f in fc if f.timestamp >= hour0][:HORIZON_HOURS]
+    if not hours:
+        return None
+    return PlanningForecast(
+        hour=now.hour,
+        solar_kwh=[f.estimated_solar_kw for f in hours],
+        load_kwh=[facility.expected_load_kw(f.timestamp.hour) for f in hours],
+    )
+
+
 async def _control_loop():
     """Main energy control loop — runs every TICK_INTERVAL_SECONDS."""
     global latest_snapshot
@@ -152,8 +176,9 @@ async def _control_loop():
             is_peak = 7 <= now.hour < 22
             tariff = PEAK_TARIFF_EUR_KWH if is_peak else OFFPEAK_TARIFF_EUR_KWH
 
-            # 2. Feed the new inputs to the Brain
-            decision = brain.decide(BrainInput(
+            # 2. Decide: the forecast planner drives the battery, the rules drive
+            #    the devices and take over if there's no forecast.
+            decision = energy_manager.decide(BrainInput(
                 solar=solar,
                 battery=battery,
                 base_load_kw=base_consumption.total_kw,
@@ -163,7 +188,7 @@ async def _control_loop():
                 peak_price_eur_kwh=PEAK_TARIFF_EUR_KWH,
                 offpeak_price_eur_kwh=OFFPEAK_TARIFF_EUR_KWH,
                 demand_target_kw=DEMAND_TARGET_KW,
-            ))
+            ), _planning_forecast(fc, now), DEMO_CFG)
 
             # 3. Apply device commands and tick down their required energy.
             for dev in system_devices:

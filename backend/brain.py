@@ -18,7 +18,7 @@ Decision priority (highest first):
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Dict
+from typing import List, Dict, Optional
 from models import (
     BatteryState, SolarReading, ConsumptionReading,
     ShiftableDevice, GridAction, EnergyDecision,
@@ -71,6 +71,10 @@ class BrainInput:
     # Peak-demand ceiling (kW). Base load + flexible devices + battery charging must
     # stay under this so we never set a costly new monthly demand peak. inf = no cap.
     demand_target_kw: float = float('inf')
+    # Battery setpoint from the forecast planner (planner.py). When set, Stage 2
+    # follows the plan inside the safety envelope instead of the rules below.
+    planned_battery_kw: Optional[float] = None
+    plan_reason: str = ""
 
 
 def decide(inp: BrainInput) -> EnergyDecision:
@@ -153,6 +157,9 @@ def decide(inp: BrainInput) -> EnergyDecision:
     # =========================================================================
     # STAGE 2: BATTERY & GRID DISPATCH
     # =========================================================================
+
+    if inp.planned_battery_kw is not None:
+        return _follow_plan(inp, now, solar, total_load, device_commands)
 
     # Rule 1: Battery critical: never DISCHARGE it. Charging is still wanted, so
     # when there is a solar surplus or the cheap rate applies, fall through to the
@@ -276,6 +283,60 @@ def decide(inp: BrainInput) -> EnergyDecision:
         consumption_kw=total_load,
         device_commands=device_commands
     )
+
+def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
+                 device_commands: Dict[str, bool]) -> EnergyDecision:
+    """
+    Apply the forecast planner's battery setpoint inside a safety envelope. The
+    plan is advisory; protection and physics are not. Live readings can differ
+    from the forecast the plan was built on, so every limit is re-checked here.
+    """
+    bat = inp.battery
+    planned = max(-bat.max_discharge_kw, min(bat.max_charge_kw, inp.planned_battery_kw))
+    deficit = total_load - solar                 # grid needed before the battery (<0 = surplus)
+
+    if planned < 0:
+        if bat.soc_percent <= BATTERY_RESERVE_SOC:
+            planned = 0.0                        # never drain below the reserve
+        else:
+            planned = max(planned, -max(deficit, 0.0))   # never discharge into the grid
+    elif planned > 0:
+        if bat.is_full:
+            planned = 0.0
+        else:
+            planned = max(0.0, min(planned, inp.demand_target_kw - deficit))  # demand cap
+
+    grid_kw = deficit + planned
+    surplus = max(-deficit, 0.0)
+    if planned > 0.5:
+        if planned <= surplus + 1e-6:
+            action = GridAction.EXPORT_TO_GRID if grid_kw < -0.5 else GridAction.BATTERY_CHARGE_FROM_SOLAR
+        else:
+            action = GridAction.BATTERY_CHARGE_FROM_GRID
+    elif planned < -0.5:
+        action = GridAction.BATTERY_DISCHARGE
+    elif grid_kw > 0.5:
+        action = GridAction.GRID_IMPORT
+    elif grid_kw < -0.5:
+        action = GridAction.EXPORT_TO_GRID
+    else:
+        action = GridAction.SOLAR_ONLY
+
+    reason = inp.plan_reason or "Following the forecast plan"
+    if abs(planned - inp.planned_battery_kw) > 0.5:
+        reason += " (limited by the safety envelope)"
+
+    return EnergyDecision(
+        timestamp=now,
+        action=action,
+        reason=reason,
+        solar_kw=solar,
+        battery_kw=planned,
+        grid_kw=grid_kw,
+        consumption_kw=total_load,
+        device_commands=device_commands,
+    )
+
 
 def solar_only_mode(solar: float, load: float, bat: BatteryState) -> EnergyDecision:
     """When solar exactly meets load (rare, but handle it)."""

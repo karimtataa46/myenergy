@@ -80,20 +80,12 @@ def runs():
     }
 
 
-# Known gap until issue #14: today's live decision is the rule engine, which
-# ignores the forecast. strict=True turns an unexpected pass into a failure, so
-# the markers must be removed the moment #14 makes these pass.
-GAP_14 = pytest.mark.xfail(strict=True, reason="#14: live brain ignores the forecast")
-
-
-@GAP_14
 def test_buys_clearly_less_overnight_before_a_sunny_day(runs):
     sunny = runs[("sunny", "forecast")]["night_grid_charge"]
     cloudy = runs[("cloudy", "forecast")]["night_grid_charge"]
     assert sunny < cloudy - 30, f"sunny {sunny:.0f} kWh vs cloudy {cloudy:.0f} kWh"
 
 
-@GAP_14
 @pytest.mark.parametrize("tomorrow", ["sunny", "cloudy"])
 def test_cheaper_than_the_forecast_blind_engine(runs, tomorrow):
     planned = runs[(tomorrow, "forecast")]["cost"]
@@ -106,8 +98,6 @@ def test_only_buys_battery_energy_in_cheap_hours(runs, tomorrow):
     assert runs[(tomorrow, "forecast")]["peak_grid_charge"] < 0.5
 
 
-@pytest.mark.xfail(strict=True, reason="#14: rule engine sizes discharge by inverter "
-                                       "power, not by energy left above the reserve")
 @pytest.mark.parametrize("tomorrow", ["sunny", "cloudy"])
 def test_never_drains_below_the_reserve(runs, tomorrow):
     lowest = runs[(tomorrow, "forecast")]["min_soc_pct"]
