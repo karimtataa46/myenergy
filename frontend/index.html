@@ -348,8 +348,9 @@ async function fetchLive(){
     document.getElementById('m-batt-sub').textContent=
       d.battery_kw>0.5?`↑ ${fmt(d.battery_kw)} kW`:d.battery_kw<-0.5?`↓ ${fmt(Math.abs(d.battery_kw))} kW`:'idle';
 
-    // SOLAR ring (vs ~62 kW clear-sky peak)
-    const sp=Math.min(100,(d.solar_kw/62)*100);
+    // SOLAR ring (vs this array's clear-sky peak, sent by the server)
+    const solarPeak=d.solar_peak_kw||62;
+    const sp=Math.min(100,(d.solar_kw/solarPeak)*100);
     setRing(document.getElementById('ring-solar'),sp,'#FFB72B');
     document.getElementById('m-solar').textContent=fmt(d.solar_kw,0);
     document.getElementById('m-solar-sub').textContent=`+${fmt(d.upcoming_solar_kw,0)} kW soon`;
@@ -360,7 +361,7 @@ async function fetchLive(){
     if(net>0.05){setRing(gEl,Math.min(100,net/100*100),'#FF4E6A');
       document.getElementById('m-grid').textContent=fmt(net,0);
       document.getElementById('m-grid-sub').textContent=`${fmt(d.tariff,2)} €/kWh in`;}
-    else if(net<-0.05){setRing(gEl,Math.min(100,-net/62*100),'#15E6A0');
+    else if(net<-0.05){setRing(gEl,Math.min(100,-net/solarPeak*100),'#15E6A0');
       document.getElementById('m-grid').textContent=fmt(-net,0);
       document.getElementById('m-grid-sub').textContent='exporting';}
     else{setRing(gEl,0,'#6E7787');

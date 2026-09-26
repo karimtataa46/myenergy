@@ -27,8 +27,6 @@ import estimate_service
 import facility_live
 import pricing_service
 import energy_manager
-import factory as F
-from dataclasses import replace
 from engine import HORIZON_HOURS
 from live_sim import live_sim
 from brain import BrainInput
@@ -83,9 +81,8 @@ OFFPEAK_TARIFF_EUR_KWH = 0.12    # 22:00–07:00
 # a NEW, higher monthly demand peak (which carries its own €/kW charge).
 DEMAND_TARGET_KW = 95.0
 
-# The demo facility as the forecast planner sees it (same prices as above).
-DEMO_CFG = replace(F.DEFAULT_CONFIG, peak_tariff=PEAK_TARIFF_EUR_KWH,
-                   offpeak_tariff=OFFPEAK_TARIFF_EUR_KWH)
+# The demo site (array size, load, battery, prices), defined once in simulator.py.
+DEMO_CFG = sim_module.DEMO_CFG
 
 # ── Lifespan: start background tasks ─────────────────────────────────────────
 
@@ -152,7 +149,7 @@ def _planning_forecast(fc, now) -> Optional[PlanningForecast]:
         return None
     return PlanningForecast(
         hour=now.hour,
-        solar_kwh=[f.estimated_solar_kw for f in hours],
+        solar_kwh=[facility.scale_to_array(f.estimated_solar_kw) for f in hours],
         load_kwh=[facility.expected_load_kw(f.timestamp.hour) for f in hours],
     )
 
@@ -166,13 +163,15 @@ async def _control_loop():
             with _forecast_lock:
                 fc = forecast_cache[:]
 
-            current_solar = weather_module.get_current_solar(fc)
-            solar = facility.get_solar(override_kw=current_solar)
+            reference_solar = weather_module.get_current_solar(fc)   # 100 kWp reference
+            solar = facility.get_solar(override_kw=None if reference_solar is None
+                                       else facility.scale_to_array(reference_solar))
             battery = facility.get_battery()
 
             # Use your old total consumption as the "Base Load" (stuff we can't turn off)
             base_consumption = facility.get_consumption()
-            upcoming = weather_module.get_upcoming_solar(fc, from_now_hours=2) if fc else 0.0
+            upcoming = (facility.scale_to_array(weather_module.get_upcoming_solar(fc, from_now_hours=2))
+                        if fc else 0.0)
             is_peak = 7 <= now.hour < 22
             tariff = PEAK_TARIFF_EUR_KWH if is_peak else OFFPEAK_TARIFF_EUR_KWH
 
@@ -252,6 +251,7 @@ async def _control_loop():
                 "cost_saved_eur": facility.cost_saved_eur,
                 "solar_fraction": facility.solar_fraction,
                 "upcoming_solar_kw": round(upcoming, 1),
+                "solar_peak_kw": round(DEMO_CFG.solar_peak_kw, 1),   # so the UI never hardcodes it
                 "tariff": tariff,
             }
 
@@ -314,7 +314,7 @@ async def get_forecast():
     return [
         {
             "ts": f.timestamp.isoformat(),
-            "solar_kw": round(f.estimated_solar_kw, 1),
+            "solar_kw": round(facility.scale_to_array(f.estimated_solar_kw), 1),
             "irradiance": round(f.solar_irradiance_wm2, 1),
             "clouds": f.cloud_cover_percent,
         }

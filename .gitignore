@@ -23,3 +23,6 @@ data/*.sqlite3
 .vscode/
 .coverage
 htmlcov/
+
+# local editor / Claude Code tooling (machine-specific paths)
+.claude/

@@ -79,7 +79,7 @@ class TestLiveForecast:
         fc = main._planning_forecast(self._weather(now), now)
         assert fc.hour == now.hour
         assert len(fc.solar_kwh) == len(fc.load_kwh) == HORIZON_HOURS
-        assert fc.solar_kwh[0] == 2.0                  # skipped the 2 past hours
+        assert fc.solar_kwh[0] == main.facility.scale_to_array(2.0)   # skipped 2 past hours, scaled to our array
         assert fc.solar_kwh == sorted(fc.solar_kwh)    # in time order
         assert fc.load_kwh[0] == main.facility.expected_load_kw(now.hour)
 

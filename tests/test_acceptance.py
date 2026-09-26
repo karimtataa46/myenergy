@@ -31,12 +31,12 @@ NIGHT_BEFORE_DAY_2 = set([22, 23] + list(range(24, 31)))     # 22:00 day 1 .. 06
 SUNNY, CLOUDY = 0.0, 0.95
 
 
-def run_two_days(tomorrow_cloud, use_forecast=True):
+def run_two_days(tomorrow_cloud, use_forecast=True, site=SITE):
     """Step the live decision hour by hour; return what happened."""
     weather = [F.DayWeather(cloud_factor=0.5), F.DayWeather(cloud_factor=tomorrow_cloud)]
-    solar = [SITE.solar_kwh(h, day.cloud_factor) for day in weather for h in range(24)]
-    load = [SITE.load_profile_kw[h] for _ in weather for h in range(24)]
-    cap = SITE.battery_capacity_kwh
+    solar = [site.solar_kwh(h, day.cloud_factor) for day in weather for h in range(24)]
+    load = [site.load_profile_kw[h] for _ in weather for h in range(24)]
+    cap = site.battery_capacity_kwh
     now = datetime.now(timezone.utc)
 
     soc = 0.5 * cap
@@ -47,25 +47,25 @@ def run_two_days(tomorrow_cloud, use_forecast=True):
         inp = brain.BrainInput(
             solar=models.SolarReading(now, solar[t], 0.0),
             battery=models.BatteryState(now, soc / cap * 100, 0.0, cap,
-                                        SITE.battery_max_charge_kw, SITE.battery_max_discharge_kw),
+                                        site.battery_max_charge_kw, site.battery_max_discharge_kw),
             base_load_kw=load[t], shiftable_devices=[],
             upcoming_solar_kw=solar[t + 1] if t + 1 < 48 else 0.0,
-            current_tariff_eur_kwh=SITE.tariff(h),
-            peak_price_eur_kwh=SITE.peak_tariff, offpeak_price_eur_kwh=SITE.offpeak_tariff)
+            current_tariff_eur_kwh=site.tariff(h),
+            peak_price_eur_kwh=site.peak_tariff, offpeak_price_eur_kwh=site.offpeak_tariff)
         forecast = models.PlanningForecast(
             hour=h, solar_kwh=solar[t:t + HORIZON_HOURS], load_kwh=load[t:t + HORIZON_HOURS])
 
-        decision = energy_manager.decide(inp, forecast if use_forecast else None, SITE)
+        decision = energy_manager.decide(inp, forecast if use_forecast else None, site)
 
-        battery, soc = _apply_battery(soc, decision.battery_kw, SITE)    # real physics
+        battery, soc = _apply_battery(soc, decision.battery_kw, site)    # real physics
         grid = load[t] - solar[t] + battery
         grid_charge = max(0.0, battery - max(solar[t] - load[t], 0.0))
 
-        out["cost"] += max(grid, 0) * SITE.tariff(h) - max(-grid, 0) * SITE.feed_in_tariff
+        out["cost"] += max(grid, 0) * site.tariff(h) - max(-grid, 0) * site.feed_in_tariff
         out["min_soc_pct"] = min(out["min_soc_pct"], soc / cap * 100)
         if t in NIGHT_BEFORE_DAY_2:
             out["night_grid_charge"] += grid_charge
-        if SITE.is_peak(h):
+        if site.is_peak(h):
             out["peak_grid_charge"] += grid_charge
     return out
 
@@ -102,3 +102,22 @@ def test_only_buys_battery_energy_in_cheap_hours(runs, tomorrow):
 def test_never_drains_below_the_reserve(runs, tomorrow):
     lowest = runs[(tomorrow, "forecast")]["min_soc_pct"]
     assert lowest >= RESERVE_PCT - 0.5, f"lowest battery {lowest:.1f}% < reserve {RESERVE_PCT}%"
+
+
+# ── the demo site must be able to SHOW the feature ────────────────────────────
+# Guards against resizing the demo back into a plant whose solar never exceeds
+# its load: the logic would still be right, but the dashboard could never show
+# "wait for the sun", which is exactly the problem we had with the 100 kWp demo.
+
+def test_demo_site_has_a_midday_solar_surplus():
+    import simulator
+    cfg = simulator.DEMO_CFG
+    best = max(cfg.solar_kwh(h, 0.0) - cfg.load_profile_kw[h] for h in range(24))
+    assert best > 20, f"demo's best sunny-hour surplus is only {best:.0f} kW"
+
+
+def test_demo_site_waits_for_the_sun():
+    import simulator
+    sunny = run_two_days(SUNNY, site=simulator.DEMO_CFG)["night_grid_charge"]
+    cloudy = run_two_days(CLOUDY, site=simulator.DEMO_CFG)["night_grid_charge"]
+    assert sunny < cloudy - 30, f"demo: sunny {sunny:.0f} kWh vs cloudy {cloudy:.0f} kWh"

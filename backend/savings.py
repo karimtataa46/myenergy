@@ -20,13 +20,14 @@ sys.path.insert(0, os.path.abspath(_SIM_DIR))
 import factory as F           # noqa: E402
 from engine import simulate   # noqa: E402
 from controllers import reactive, predictive  # noqa: E402
+from simulator import DEMO_CFG                 # noqa: E402  the same plant as the live demo
 
 
 def _saving_for_days(days: int) -> dict:
     days = max(days, 1)
     weather = F.generate_month_weather(days=days, seed=42)
-    base = simulate(weather, reactive)
-    smart = simulate(weather, predictive)
+    base = simulate(weather, reactive, cfg=DEMO_CFG)
+    smart = simulate(weather, predictive, cfg=DEMO_CFG)
     saving = base.cost_eur - smart.cost_eur
     co2 = base.co2_kg - smart.co2_kg
     return {

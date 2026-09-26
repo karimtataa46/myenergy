@@ -7,6 +7,7 @@ import math
 import os
 import sys
 import random
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -41,6 +42,33 @@ ZONES = {
 }
 TOTAL_BASE_CONSUMPTION_KW = sum(ZONES.values())
 
+# The demo factory's rooftop array. Deliberately bigger than its ~90 kW daytime
+# load: with the old 100 kWp array the solar never exceeded the load, so the sun
+# could never charge the battery and "wait for the sun" could never be shown.
+DEMO_SOLAR_KWP = 250.0
+# Weather forecasts are computed for a 100 kWp reference array; scale to ours.
+_SOLAR_SCALE = DEMO_SOLAR_KWP / F.SOLAR_NAMEPLATE_KW
+
+
+def expected_load_kw(hour: int) -> float:
+    """Expected base consumption for an hour of day (production slows at night)."""
+    return TOTAL_BASE_CONSUMPTION_KW * (1.0 if 6 <= hour <= 22 else 0.3)
+
+
+# The demo site as ONE config: the live loop, the forecast planner and the
+# month-to-date savings all read this, so every number describes the same plant.
+DEMO_CFG = replace(
+    F.DEFAULT_CONFIG,
+    solar_nameplate_kw=DEMO_SOLAR_KWP,
+    solar_peak_kw=F.SOLAR_PEAK_KW * _SOLAR_SCALE,
+    load_profile_kw=[expected_load_kw(h) for h in range(24)],
+    battery_capacity_kwh=BATTERY_CAPACITY_KWH,
+    battery_max_charge_kw=BATTERY_MAX_CHARGE_KW,
+    battery_max_discharge_kw=BATTERY_MAX_DISCHARGE_KW,
+    peak_tariff=PEAK_TARIFF,
+    offpeak_tariff=OFFPEAK_TARIFF,
+)
+
 
 class FacilitySimulator:
     """
@@ -55,14 +83,18 @@ class FacilitySimulator:
         self._grid_kwh_total = 0.0
         self._solar_kwh_total = 0.0
 
+    def scale_to_array(self, reference_kw: float) -> float:
+        """Convert a forecast for the 100 kWp reference array into our array's kW."""
+        return reference_kw * _SOLAR_SCALE
+
     def get_solar(self, override_kw: Optional[float] = None) -> SolarReading:
         now = datetime.now(timezone.utc)
         if override_kw is not None:
             kw = override_kw
         else:
             kw = self._simulate_solar(now)
-        # Irradiance back-calculated from kw for display
-        irradiance = (kw * 1000) / (556 * 0.18) if kw > 0 else 0
+        # Irradiance back-calculated for display (per reference-array output)
+        irradiance = (kw / _SOLAR_SCALE * 1000) / (556 * 0.18) if kw > 0 else 0
         return SolarReading(
             timestamp=now,
             power_kw=round(kw, 2),
@@ -80,9 +112,8 @@ class FacilitySimulator:
         )
 
     def expected_load_kw(self, hour: int) -> float:
-        """Expected base consumption for an hour of day (production slows at night).
-        The single source for both the simulated readings and the load forecast."""
-        return TOTAL_BASE_CONSUMPTION_KW * (1.0 if 6 <= hour <= 22 else 0.3)
+        """The single source for both the simulated readings and the load forecast."""
+        return expected_load_kw(hour)
 
     def get_consumption(self) -> ConsumptionReading:
         now = datetime.now(timezone.utc)
@@ -156,8 +187,8 @@ class FacilitySimulator:
         hour = dt.hour + dt.minute / 60
         if 6 <= hour <= 20:
             angle = math.pi * (hour - 6) / 14
-            # Clear-sky peak from the single source of truth (factory profile),
-            # so live data matches the forecast and savings models.
-            peak = F.SOLAR_PEAK_KW + random.uniform(-5, 5)  # slight randomness
+            # Clear-sky peak of THIS array, from the demo config, so live data
+            # matches the forecast and savings models.
+            peak = DEMO_CFG.solar_peak_kw + random.uniform(-5, 5)  # slight randomness
             return max(0, peak * math.sin(angle))
         return 0.0
