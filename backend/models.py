@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 
 class GridAction(str, Enum):
@@ -156,3 +156,11 @@ class EnergyDecision:
     consumption_kw: float
     device_commands: Dict[str, bool] = field(default_factory=dict)  # NEW: {"ev_charger": True, "water_heater": False}
     forecast_horizon_hours: int = 2
+
+
+@dataclass
+class PlanningForecast:
+    """The coming hours as the decision engine sees them, current hour first."""
+    hour: int                  # current hour of day (drives the tariff)
+    solar_kwh: List[float]     # expected solar energy per hour
+    load_kwh: List[float]      # expected consumption per hour
