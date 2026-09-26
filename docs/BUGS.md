@@ -7,10 +7,10 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 10 logged, 10 fixed. 2 caught by the automated test suite, 1 by a
-scenario experiment, 1 by a live run against real weather, 6 by manual review
-during development (before the suite existed which is exactly why the suite is
-being built now).
+**Status:** 12 logged, 12 fixed. 2 caught by the automated test suite, 1 by a
+scenario experiment, 1 by a live run against real weather, 2 by checking the new
+plan dashboard against real data, 6 by manual review during development (before
+the suite existed which is exactly why the suite is being built now).
 
 ### Severity
 | Level | Meaning |
@@ -24,6 +24,8 @@ being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#19](https://github.com/karimtataa46/myenergy/issues/19) | Low | `brain.py` | Solver rounding noise (a fraction of a kW) let a solar-charging plan buy a little peak-price grid power, and the reason claimed more storage than was happening | **dashboard check** against live data; regression: `test_solver_noise_is_not_a_grid_purchase` | ✅ Fixed | `96a7837` |
+| [#18](https://github.com/karimtataa46/myenergy/issues/18) | Medium | `main.py`, `simulator.py` | Demo tariff, work-day load and CO2 followed UTC hours instead of the plant's local time (cheap power "ran until 09:00" in Munich) | **dashboard check**: the plan read wrong in local time; regression: `tests/test_site_time.py` | ✅ Fixed | `cb10077` |
 | [#15](https://github.com/karimtataa46/myenergy/issues/15) | Medium | `brain.py` | Following a solar-charging plan bought peak-price grid power when the live surplus was smaller than the forecast (label "from grid", reason "free solar") | **live run** against the real Open-Meteo forecast; regression: `test_solar_plan_never_buys_peak_grid_when_the_sun_falls_short` | ✅ Fixed | `247d67a` |
 | [#12](https://github.com/karimtataa46/myenergy/issues/12) | Medium | `brain.py` | A battery at or below 15% was never recharged (not at the cheap night rate, not from solar surplus), so it stayed pinned at the floor | **scenario experiment** (sunny vs cloudy simulation); regression: `TestCriticalBattery` | ✅ Fixed | `4db76a1` |
 | [#11](https://github.com/karimtataa46/myenergy/issues/11) | Low | `estimate_service.py` | Monthly and annual savings didn't reconcile (€887/mo shown as €10,650/yr, not €10,644) | **automated test** (`test_annual_is_twelve_times_monthly`) | ✅ Fixed | `d08695b` |
