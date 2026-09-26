@@ -24,6 +24,7 @@ any hand written rules.
 | Surface | What it shows |
 |---------|---------------|
 | `/` | Live dashboard for a simulated factory: self powered %, battery / solar / grid state, month to date savings, the current decision, power flow and forecast. |
+| `/plan` | The plan for the next day and a half: what the system will buy tonight and why, what the forecast sun will add, how full the battery gets, and the hour-by-hour timeline behind it (in the plant's local time). |
 | `/estimate` | Enter your own site (city, solar kWp, battery kWh, monthly usage) and get a predictive savings estimate plus a live dashboard for that facility. |
 | `/sim` | Accelerated savings session: runs the optimiser against a plain baseline in fast forward and banks the gap second by second. |
 

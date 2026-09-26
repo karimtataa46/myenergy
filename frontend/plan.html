@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myEnergy · Plan</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#060708; --card:#101216; --card2:#171A20; --border:#23272F;
+    --text:#F4F6F8; --muted:#8A93A3; --faint:#5C6573;
+    --green:#15E6A0; --amber:#FFB72B; --coral:#FF4E6A; --cyan:#36D7F2; --blue:#378ADD;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background-image:radial-gradient(900px 500px at 50% -8%,rgba(21,230,160,0.08),transparent 70%);background-attachment:fixed}
+  header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;max-width:820px;margin:0 auto}
+  .logo{font-size:19px;font-weight:800;letter-spacing:-0.5px;color:var(--text);text-decoration:none}
+  .logo span{color:var(--green)}
+  nav{display:flex;gap:6px}
+  nav a{font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;padding:7px 13px;border-radius:999px;border:1px solid transparent}
+  nav a[aria-current="page"]{color:var(--text);border-color:var(--border);background:var(--card)}
+  main{max-width:820px;margin:0 auto;padding:4px 18px 80px;display:flex;flex-direction:column;gap:16px}
+  .site{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}
+  .site h1{font-size:22px;font-weight:700;letter-spacing:-0.3px}
+  .meta{font-size:12.5px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px 22px}
+  .eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .story{display:flex;gap:16px;align-items:flex-start}
+  .story-ic{width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+  .story-ic svg{width:24px;height:24px}
+  .tone-sun .story-ic{background:rgba(21,230,160,0.12);color:var(--green)}
+  .tone-buy .story-ic{background:rgba(255,183,43,0.12);color:var(--amber)}
+  .tone-hold .story-ic{background:rgba(138,147,163,0.14);color:var(--muted)}
+  #story-headline{font-size:21px;font-weight:700;letter-spacing:-0.3px;margin-top:4px}
+  #story-detail{font-size:15px;color:#C9CFD8;line-height:1.6;margin-top:6px}
+  .now-line{font-size:13px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .now-line b{color:var(--text);font-weight:600}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+  .kpi .l{font-size:12.5px;color:var(--muted);font-weight:600}
+  .kpi .v{font-size:28px;font-weight:800;letter-spacing:-0.8px;margin-top:4px;font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:12.5px;color:var(--faint);margin-top:2px}
+  .chart-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}
+  .chart-head h2{font-size:16px;font-weight:700}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 6px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+  .chart-box{position:relative;height:280px}
+  #status{text-align:center;padding:48px 20px;color:var(--muted);font-size:15px;line-height:1.6}
+  #status button,#conn button{margin-top:14px;background:var(--card2);color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:8px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  #conn{display:none;font-size:13px;color:var(--amber);background:rgba(255,183,43,0.08);
+    border:1px solid rgba(255,183,43,0.25);border-radius:12px;padding:10px 14px}
+  #content{display:none;flex-direction:column;gap:16px}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/">my<span>Energy</span></a>
+  <nav aria-label="Pages">
+    <a href="/">Live</a>
+    <a href="/plan" aria-current="page">Plan</a>
+  </nav>
+</header>
+
+<main>
+  <div id="status" role="status" aria-live="polite">Building the plan…</div>
+  <div id="conn" role="alert"></div>
+
+  <div id="content">
+    <div class="site">
+      <h1 id="site-name">Your plant</h1>
+      <p class="meta" id="site-meta"></p>
+    </div>
+
+    <section class="card story" id="story" aria-live="polite">
+      <div class="story-ic" id="story-ic" aria-hidden="true"></div>
+      <div style="flex:1;min-width:0">
+        <p class="eyebrow">The plan</p>
+        <p id="story-headline"></p>
+        <p id="story-detail"></p>
+        <p class="now-line">Right now: <b id="now-reason">waiting for the first reading</b></p>
+      </div>
+    </section>
+
+    <section class="kpis" aria-label="Plan numbers">
+      <div class="kpi"><p class="l">Bought tonight</p><p class="v" id="k-buy">…</p><p class="s" id="k-buy-s"></p></div>
+      <div class="kpi"><p class="l">Free solar into the battery</p><p class="v" id="k-sun">…</p><p class="s">next 24 hours</p></div>
+      <div class="kpi"><p class="l">Battery at its fullest</p><p class="v" id="k-full">…</p><p class="s" id="k-full-s"></p></div>
+    </section>
+
+    <section class="card">
+      <div class="chart-head">
+        <h2 id="chart-title">The next hours</h2>
+        <p class="meta" id="chart-note"></p>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i style="background:var(--amber)"></i>Solar forecast</span>
+        <span><i style="background:#8A93A3"></i>Consumption</span>
+        <span><i style="background:var(--coral)"></i>Grid bought for the battery</span>
+        <span><i style="background:var(--green)"></i>Battery level</span>
+      </div>
+      <div class="chart-box"><canvas id="plan-chart" role="img" aria-label="Plan timeline"></canvas></div>
+    </section>
+
+    <section class="kpis" aria-label="Savings and live values">
+      <div class="kpi"><p class="l">Saved this month</p><p class="v" id="s-saved">…</p><p class="s">vs doing nothing, same hardware</p></div>
+      <div class="kpi"><p class="l">Projected month</p><p class="v" id="s-proj">…</p><p class="s" id="s-pct"></p></div>
+      <div class="kpi"><p class="l">Live now</p><p class="v" id="l-now" style="font-size:18px;margin-top:10px">…</p><p class="s" id="l-grid"></p></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const ICONS = {
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  hold:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></svg>',
+};
+let chart = null, lastPlan = null, planTimer = null;
+
+function fmtTime(iso, tz) {
+  return new Intl.DateTimeFormat('en-GB', {hour: '2-digit', minute: '2-digit', timeZone: tz}).format(new Date(iso));
+}
+function showStatus(html) { $('status').innerHTML = html; $('status').style.display = 'block'; $('content').style.display = 'none'; }
+function showContent() { $('status').style.display = 'none'; $('content').style.display = 'flex'; }
+
+const cheapBands = {
+  id: 'cheapBands',
+  beforeDatasetsDraw(c) {
+    // Each hour is the span from its label to the next one, so 22:00 shading
+    // starts exactly at 22:00, and "now" sits inside the current hour.
+    const {ctx, chartArea: a, scales: {x}} = c, hours = c.$plan.hours;
+    const w = x.getPixelForValue(1) - x.getPixelForValue(0);
+    ctx.save();
+    ctx.fillStyle = 'rgba(55,138,221,0.10)';
+    hours.forEach((h, i) => {
+      if (!h.cheap) return;
+      const x0 = x.getPixelForValue(i), x1 = Math.min(x0 + w, a.right);
+      ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+    });
+    const nx = x.getPixelForValue(0) + w * c.$plan.minuteFraction;
+    ctx.strokeStyle = '#C9CFD8'; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(nx, a.top); ctx.lineTo(nx, a.bottom); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = '#C9CFD8'; ctx.font = '12px -apple-system,Inter,sans-serif';
+    ctx.fillText('now', nx + 5, a.top + 12);
+    ctx.restore();
+  }
+};
+
+function drawChart(p) {
+  const labels = p.hours.map(h => h.label);
+  const tz = p.site.timezone;
+  const localMinute = Number(new Intl.DateTimeFormat('en-GB', {minute: '2-digit', timeZone: tz}).format(new Date(p.generated_at)));
+  const data = {
+    labels,
+    datasets: [
+      {type: 'line', label: 'Grid bought for the battery', data: p.hours.map(h => h.grid_buy_kw), borderColor: '#FF4E6A', backgroundColor: 'rgba(255,78,106,0.45)', fill: true, stepped: 'after', pointRadius: 0, borderWidth: 1.5, yAxisID: 'y', order: 3},
+      {type: 'line', label: 'Solar forecast', data: p.hours.map(h => h.solar_kw), borderColor: '#FFB72B', backgroundColor: 'rgba(255,183,43,0.16)', fill: true, pointRadius: 0, cubicInterpolationMode: 'monotone', yAxisID: 'y', order: 2},
+      {type: 'line', label: 'Consumption', data: p.hours.map(h => h.load_kw), borderColor: '#8A93A3', borderDash: [5, 4], pointRadius: 0, stepped: 'after', yAxisID: 'y', order: 1},
+      {type: 'line', label: 'Battery level', data: p.hours.map(h => h.battery_pct), borderColor: '#15E6A0', borderWidth: 2.5, pointRadius: 0, cubicInterpolationMode: 'monotone', yAxisID: 'y2', order: 0},
+    ],
+  };
+  const peak = Math.max(20, ...p.hours.map(h => Math.max(h.solar_kw, h.load_kw, h.grid_buy_kw)));
+  if (chart) {
+    chart.data = data; chart.$plan = {hours: p.hours, minuteFraction: localMinute / 60};
+    chart.options.scales.y.suggestedMax = peak * 1.1; chart.update('none'); return;
+  }
+  chart = new Chart($('plan-chart'), {
+    data,
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: {mode: 'index', intersect: false},
+      plugins: {legend: {display: false}, tooltip: {callbacks: {
+        label: c => `${c.dataset.label}: ${Math.round(c.parsed.y)}${c.dataset.yAxisID === 'y2' ? '%' : ' kW'}`}}},
+      scales: {
+        x: {offset: false, grid: {display: false}, ticks: {color: '#8A93A3', maxRotation: 0, autoSkip: true, maxTicksLimit: 10}},
+        y: {min: 0, suggestedMax: peak * 1.1, grid: {color: 'rgba(255,255,255,0.06)'}, ticks: {color: '#8A93A3', callback: v => v + ' kW'}},
+        y2: {position: 'right', min: 0, max: 100, grid: {display: false}, ticks: {color: '#8A93A3', callback: v => v + '%'}},
+      },
+    },
+    plugins: [cheapBands],
+  });
+  chart.$plan = {hours: p.hours, minuteFraction: localMinute / 60};
+  chart.update('none');
+}
+
+function renderPlan(p) {
+  const tz = p.site.timezone, s = p.summary;
+  $('site-name').textContent = p.site.name;
+  const fc = p.forecast_fetched_at ? ` · forecast from ${fmtTime(p.forecast_fetched_at, tz)}` : '';
+  $('site-meta').textContent = `Plan updated ${fmtTime(p.generated_at, tz)}${fc} · ${tz.replace('_', ' ')} time`;
+
+  $('story').className = `card story tone-${p.story.tone}`;
+  $('story-ic').innerHTML = ICONS[p.story.tone] || ICONS.hold;
+  $('story-headline').textContent = p.story.headline;
+  $('story-detail').textContent = p.story.detail;
+
+  $('k-buy').textContent = `${s.buy_tonight_kwh} kWh`;
+  $('k-buy-s').textContent = s.buy_from
+    ? `at €${s.buy_price.toFixed(2)}, ${s.buy_from} to ${s.buy_until}`
+    : (s.buy_without_sun_kwh > 0 ? `${s.buy_without_sun_kwh} kWh without the sun` : 'nothing needed');
+  $('k-sun').textContent = `${s.solar_to_battery_kwh} kWh`;
+  $('k-full').textContent = `${s.fullest_battery_pct}%`;
+  $('k-full-s').textContent = `at ${s.fullest_at}`;
+
+  $('chart-title').textContent = `The next ${p.hours.length} hours`;
+  $('chart-note').textContent = `Shaded: cheap rate (€${p.site.cheap_price.toFixed(2)})`;
+  $('plan-chart').setAttribute('aria-label',
+    `Plan timeline for the next ${p.hours.length} hours. ${p.story.headline}. ${p.story.detail}`);
+  drawChart(p);
+  showContent();
+}
+
+async function loadPlan() {
+  clearTimeout(planTimer);
+  try {
+    const r = await fetch('/api/plan', {cache: 'no-store'});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const p = await r.json();
+    $('conn').style.display = 'none';
+    if (!p.available) {
+      lastPlan = null;
+      showStatus(`${p.message}<br><button type="button" onclick="loadPlan()">Check again</button>`);
+      planTimer = setTimeout(loadPlan, 30000);
+      return;
+    }
+    lastPlan = p; renderPlan(p);
+    planTimer = setTimeout(loadPlan, 60000);
+  } catch (e) {
+    if (lastPlan) {
+      $('conn').innerHTML = `Can't reach the server. Showing the last plan, from ${fmtTime(lastPlan.generated_at, lastPlan.site.timezone)}. Retrying in 10 seconds.`;
+      $('conn').style.display = 'block';
+    } else {
+      showStatus(`Can't reach the server. Retrying in 10 seconds.<br><button type="button" onclick="loadPlan()">Try now</button>`);
+    }
+    planTimer = setTimeout(loadPlan, 10000);
+  }
+}
+
+async function loadLive() {
+  try {
+    const d = await (await fetch('/api/live', {cache: 'no-store'})).json();
+    if (!d || !d.ts) return;
+    $('now-reason').textContent = d.reason;
+    $('l-now').textContent = `Solar ${Math.round(d.solar_kw)} kW · battery ${Math.round(d.battery_soc)}%`;
+    const net = (d.grid_import_kw || 0) - (d.grid_export_kw || 0);
+    $('l-grid').textContent = net > 0.5 ? `grid importing ${Math.round(net)} kW`
+      : net < -0.5 ? `exporting ${Math.round(-net)} kW` : 'grid idle';
+  } catch (e) { /* the plan loader reports connection problems */ }
+}
+
+async function loadSavings() {
+  try {
+    const d = await (await fetch('/api/savings', {cache: 'no-store'})).json();
+    $('s-saved').textContent = `€${Math.round(d.saved_eur)}`;
+    $('s-proj').textContent = `€${Math.round(d.projected_full_month_eur)}`;
+    $('s-pct').textContent = `${d.pct_of_bill}% of your bill`;
+  } catch (e) { /* keep the last values */ }
+}
+
+loadPlan(); loadLive(); loadSavings();
+setInterval(loadLive, 5000);
+setInterval(loadSavings, 300000);
+</script>
+</body>
+</html>

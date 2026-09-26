@@ -22,16 +22,29 @@ import planner
 from models import EnergyDecision, PlanningForecast
 
 
+def plan_for(battery, forecast: Optional[PlanningForecast], cfg=None) -> Optional[planner.Plan]:
+    """The plan the live system follows, within the brain's safety limits.
+    Shared by decide() and the dashboard so both always show the same plan."""
+    if forecast is None:
+        return None
+    return planner.make_plan(
+        battery, forecast, cfg or F.DEFAULT_CONFIG,
+        min_soc_frac=brain.BATTERY_RESERVE_SOC / 100.0,
+        max_soc_frac=brain.BATTERY_FULL_SOC / 100.0,
+    )
+
+
+def plan_without_sun(battery, forecast: Optional[PlanningForecast], cfg=None) -> Optional[planner.Plan]:
+    """The same plan as if the sun didn't shine: the counterfactual that shows
+    how much buying the forecast sun actually saves."""
+    if forecast is None:
+        return None
+    return plan_for(battery, replace(forecast, solar_kwh=[0.0] * len(forecast.solar_kwh)), cfg)
+
+
 def decide(inp: brain.BrainInput, forecast: Optional[PlanningForecast],
            cfg=None) -> EnergyDecision:
-    cfg = cfg or F.DEFAULT_CONFIG
-    plan = None
-    if forecast is not None:
-        plan = planner.make_plan(
-            inp.battery, forecast, cfg,
-            min_soc_frac=brain.BATTERY_RESERVE_SOC / 100.0,
-            max_soc_frac=brain.BATTERY_FULL_SOC / 100.0,
-        )
+    plan = plan_for(inp.battery, forecast, cfg)
     if plan is None:
         return brain.decide(inp)          # no forecast or solver failure: rules
     return brain.decide(replace(inp, planned_battery_kw=plan.battery_kw,

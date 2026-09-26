@@ -27,6 +27,8 @@ import estimate_service
 import facility_live
 import pricing_service
 import energy_manager
+import planner
+from zoneinfo import ZoneInfo
 from engine import HORIZON_HOURS
 from live_sim import live_sim
 from brain import BrainInput
@@ -66,15 +68,11 @@ def _page(name: str) -> FileResponse:
 facility = sim_module.FacilitySimulator()
 latest_snapshot: dict = {}
 forecast_cache: list = []
+forecast_fetched_at: Optional[datetime] = None
 _forecast_lock = threading.Lock()
 
 TICK_INTERVAL_SECONDS = 5
 FORECAST_REFRESH_MINUTES = 30
-
-# Facility tariff (EUR/kWh) — simple two-tier. Named constants (no more magic
-# numbers) so the brain can reason about the real spread for arbitrage.
-PEAK_TARIFF_EUR_KWH = 0.28       # 07:00–22:00
-OFFPEAK_TARIFF_EUR_KWH = 0.12    # 22:00–07:00
 
 # Peak-demand ceiling (kW). The daytime base load naturally peaks ~90 kW; hold
 # flexible loads + battery charging under this so night-time arbitrage never sets
@@ -148,10 +146,15 @@ def _planning_forecast(fc, now) -> Optional[PlanningForecast]:
     if not hours:
         return None
     return PlanningForecast(
-        hour=now.hour,
+        hour=sim_module.site_hour(now),        # the plant's clock drives tariffs + load (#18)
         solar_kwh=[facility.scale_to_array(f.estimated_solar_kw) for f in hours],
-        load_kwh=[facility.expected_load_kw(f.timestamp.hour) for f in hours],
+        load_kwh=[facility.expected_load_kw(sim_module.site_hour(f.timestamp)) for f in hours],
     )
+
+
+def _tariff_at(now: datetime) -> float:
+    """Grid price right now, on the plant's local clock."""
+    return DEMO_CFG.tariff(sim_module.site_hour(now))
 
 
 async def _control_loop():
@@ -169,11 +172,10 @@ async def _control_loop():
             battery = facility.get_battery()
 
             # Use your old total consumption as the "Base Load" (stuff we can't turn off)
-            base_consumption = facility.get_consumption()
+            base_consumption = facility.get_consumption(now)
             upcoming = (facility.scale_to_array(weather_module.get_upcoming_solar(fc, from_now_hours=2))
                         if fc else 0.0)
-            is_peak = 7 <= now.hour < 22
-            tariff = PEAK_TARIFF_EUR_KWH if is_peak else OFFPEAK_TARIFF_EUR_KWH
+            tariff = _tariff_at(now)
 
             # 2. Decide: the forecast planner drives the battery, the rules drive
             #    the devices and take over if there's no forecast.
@@ -184,8 +186,8 @@ async def _control_loop():
                 shiftable_devices=system_devices,
                 upcoming_solar_kw=upcoming,
                 current_tariff_eur_kwh=tariff,
-                peak_price_eur_kwh=PEAK_TARIFF_EUR_KWH,
-                offpeak_price_eur_kwh=OFFPEAK_TARIFF_EUR_KWH,
+                peak_price_eur_kwh=DEMO_CFG.peak_tariff,
+                offpeak_price_eur_kwh=DEMO_CFG.offpeak_tariff,
                 demand_target_kw=DEMAND_TARGET_KW,
             ), _planning_forecast(fc, now), DEMO_CFG)
 
@@ -276,11 +278,12 @@ async def _forecast_refresh_loop():
 
 
 async def _refresh_forecast():
-    global forecast_cache
+    global forecast_cache, forecast_fetched_at
     print("[weather] fetching forecast...")
     fc = await asyncio.to_thread(weather_module.fetch_forecast)
     with _forecast_lock:
         forecast_cache = fc
+        forecast_fetched_at = datetime.now(timezone.utc)
     print(f"[weather] got {len(fc)} hourly forecasts")
 
 
@@ -358,6 +361,73 @@ async def api_estimate(inp: EstimateIn):
         estimate_service.estimate_savings,
         inp.city, inp.solar_kwp, inp.battery_kwh, inp.monthly_kwh, _picked_place(inp),
     )
+
+
+#  The plan: what the system will do over the coming hours, and why
+
+@app.get("/plan")
+async def plan_page():
+    return _page("plan.html")
+
+
+def _plan_response(now: Optional[datetime] = None) -> dict:
+    """The planner's full timeline plus the summary and story, for the dashboard."""
+    now = now or datetime.now(timezone.utc)
+    with _forecast_lock:
+        fc, fetched = forecast_cache[:], forecast_fetched_at
+    battery, forecast = facility.get_battery(), _planning_forecast(fc, now)
+    plan = energy_manager.plan_for(battery, forecast, DEMO_CFG)
+    if plan is None:
+        return {"available": False,
+                "message": "No forecast yet, so the system is running on its safe rules. "
+                           "The plan appears as soon as a forecast arrives."}
+
+    tz = ZoneInfo(sim_module.DEMO_TIMEZONE)
+    hour0 = now.replace(minute=0, second=0, microsecond=0)
+    start_of = lambda k: hour0 + timedelta(hours=k)
+    fmt = lambda k: start_of(k).astimezone(tz).strftime("%H:%M")
+    s = planner.summarize(plan, fmt, energy_manager.plan_without_sun(battery, forecast, DEMO_CFG))
+    return {
+        "available": True,
+        "generated_at": now.isoformat(),
+        "forecast_fetched_at": fetched.isoformat() if fetched else None,
+        "site": {
+            "name": sim_module.DEMO_NAME,
+            "timezone": sim_module.DEMO_TIMEZONE,
+            "solar_kwp": DEMO_CFG.solar_nameplate_kw,
+            "battery_kwh": DEMO_CFG.battery_capacity_kwh,
+            "cheap_price": DEMO_CFG.offpeak_tariff,
+            "peak_price": DEMO_CFG.peak_tariff,
+        },
+        "story": {"tone": s.tone, "headline": s.headline, "detail": s.detail},
+        "summary": {
+            "buy_tonight_kwh": round(s.buy_tonight_kwh),
+            "buy_without_sun_kwh": round(s.buy_without_sun_kwh),
+            "buy_from": fmt(s.buy_first) if s.buy_first is not None else None,
+            "buy_until": fmt(s.buy_last + 1) if s.buy_last is not None else None,
+            "buy_price": s.buy_price,
+            "solar_to_battery_kwh": round(s.solar_to_battery_kwh),
+            "fullest_battery_pct": round(s.fullest_pct),
+            "fullest_at": fmt(s.fullest_offset + 1),
+        },
+        # Every value is anchored to its label: flows are averages over the hour that
+        # STARTS at the label, and the battery level is the level AT the label. The
+        # planner reports end-of-hour levels, so shift them by one (hour 0 = now).
+        "hours": [
+            {"time": start_of(h.offset).isoformat(), "label": fmt(h.offset),
+             "solar_kw": round(h.solar_kw, 1), "load_kw": round(h.load_kw, 1),
+             "grid_buy_kw": round(h.grid_buy_kw, 1), "battery_pct": round(level, 1),
+             "price": h.price, "cheap": h.cheap}
+            for h, level in zip(plan.hours,
+                                [battery.soc_percent] + [x.battery_pct for x in plan.hours[:-1]])
+        ],
+    }
+
+
+@app.get("/api/plan")
+async def api_plan():
+    """What the system plans to do over the coming hours, and why."""
+    return await asyncio.to_thread(_plan_response)
 
 
 #  Live per-user facility dashboard (the /estimate -> live view)

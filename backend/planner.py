@@ -7,12 +7,23 @@ linear program in simulation/optimizer.py, and returns only what to do THIS hour
 plus a plain-language reason. Next tick it plans again with fresh numbers (a
 receding horizon), so a wrong forecast is corrected as soon as reality differs.
 """
-from dataclasses import dataclass, replace
-from typing import Optional
+from dataclasses import dataclass, field, replace
+from typing import Callable, List, Optional
 
 from engine import HORIZON_HOURS
 from models import BatteryState, PlanningForecast
 from optimizer import optimal_battery_schedule
+
+
+@dataclass
+class PlanHour:
+    offset: int            # hours from now (0 = the current hour)
+    solar_kw: float
+    load_kw: float
+    grid_buy_kw: float     # bought from the grid INTO the battery this hour
+    battery_pct: float     # planned battery level at the END of this hour
+    price: float
+    cheap: bool
 
 
 @dataclass
@@ -21,6 +32,7 @@ class Plan:
     grid_charge_now_kw: float     # part of this hour's charging bought from the grid
     solar_to_battery_kwh: float   # free solar the plan expects to store in the next 24 h
     reason: str
+    hours: List[PlanHour] = field(default_factory=list)   # the whole planned timeline
 
 
 def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
@@ -64,7 +76,94 @@ def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
 
     reason = _explain(battery_kw, grid_charge_now, solar_to_battery, price[0],
                       cfg.is_peak(forecast.hour), full)
-    return Plan(battery_kw, grid_charge_now, solar_to_battery, reason)
+    timeline = [
+        PlanHour(offset=k, solar_kw=solar[k], load_kw=load[k],
+                 grid_buy_kw=float(charge[k] - from_solar[k]),
+                 battery_pct=float(schedule["soc"][k] / battery.capacity_kwh * 100),
+                 price=price[k], cheap=not cfg.is_peak((forecast.hour + k) % 24))
+        for k in range(hours)
+    ]
+    return Plan(battery_kw, grid_charge_now, solar_to_battery, reason, timeline)
+
+
+@dataclass
+class PlanSummary:
+    buy_tonight_kwh: float          # grid energy bought for the battery in the next cheap window
+    buy_without_sun_kwh: float      # what it would buy tonight if the sun didn't shine
+    buy_first: Optional[int]        # offset of the first hour it buys (None = buys nothing)
+    buy_last: Optional[int]         # offset of the last hour it buys
+    buy_price: Optional[float]
+    solar_to_battery_kwh: float     # free solar stored in the next 24 h
+    fullest_pct: float              # highest planned battery level in the next 24 h ...
+    fullest_offset: int             # ... reached at the end of this hour
+    tone: str                       # "sun" | "buy" | "hold"
+    headline: str
+    detail: str
+
+
+def _tonight(plan: Plan):
+    """The next cheap window (the current one if we're in it) and what is bought in it."""
+    start = next((h.offset for h in plan.hours if h.cheap), None)
+    window = []
+    if start is not None:
+        for h in plan.hours[start:]:
+            if not h.cheap:
+                break
+            window.append(h)
+    buying = [h for h in window if h.grid_buy_kw > 0.5]
+    return buying, sum(h.grid_buy_kw for h in window)
+
+
+# The sun must save at least this much buying before the story credits it.
+SUN_CREDIT_KWH = 5.0
+
+
+def summarize(plan: Plan, fmt_time: Callable[[int], str],
+              plan_without_sun: Optional[Plan] = None) -> PlanSummary:
+    """
+    Turn the hour-by-hour plan into what a facility manager actually asks: how
+    much am I buying tonight, what does the sun do, how full will the battery
+    get, and why. fmt_time(offset) renders the START of an hour, so the caller
+    decides the timezone.
+
+    plan_without_sun is the same plan as if the sun didn't shine. Comparing the
+    two is the honest way to say whether the forecast sun changed tonight's
+    purchase; comparing "bought" with "stored" would mix unrelated numbers.
+    """
+    buying, buy = _tonight(plan)
+    buy_without_sun = _tonight(plan_without_sun)[1] if plan_without_sun else buy
+    sun_saves = buy_without_sun - buy
+    first = buying[0].offset if buying else None
+    last = buying[-1].offset if buying else None
+    price = buying[0].price if buying else None
+    solar = plan.solar_to_battery_kwh
+    fullest = max(plan.hours[:24], key=lambda h: h.battery_pct)
+    when = f"between {fmt_time(first)} and {fmt_time(last + 1)}" if buying else ""
+
+    if sun_saves > SUN_CREDIT_KWH:
+        tone, headline = "sun", "Waiting for the sun"
+        bought = f"only {buy:.0f} kWh is bought tonight, {when}," if buying else "nothing is bought tonight,"
+        detail = (f"The forecast sun will do part of the work, so {bought} "
+                  f"instead of {buy_without_sun:.0f} kWh.")
+    elif buying:
+        tone, headline = "buy", "Buying cheap power tonight"
+        if solar > SUN_CREDIT_KWH:
+            detail = (f"{buy:.0f} kWh is bought {when} at €{price:.2f} to cover the hours "
+                      f"before the sun is strong enough. The sun then adds about {solar:.0f} kWh.")
+        else:
+            detail = (f"Tomorrow looks too dark for the sun to charge the battery, "
+                      f"so {buy:.0f} kWh is bought {when} at €{price:.2f}.")
+    elif solar > SUN_CREDIT_KWH:
+        tone, headline = "sun", "Running on the sun"
+        detail = (f"Nothing needs to be bought tonight. The sun will put about "
+                  f"{solar:.0f} kWh into the battery for free.")
+    else:
+        tone, headline = "hold", "Holding steady"
+        detail = ("No battery purchase is planned in the next 24 hours. "
+                  "The grid covers the load whenever the battery can't.")
+
+    return PlanSummary(buy, buy_without_sun, first, last, price, solar, fullest.battery_pct,
+                       fullest.offset, tone, headline, detail)
 
 
 def _explain(battery_kw, grid_charge_now, solar_to_battery, price, is_peak, full) -> str:

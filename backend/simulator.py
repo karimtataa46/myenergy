@@ -10,6 +10,7 @@ import random
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from models import SolarReading, BatteryState, GridReading, ConsumptionReading
 
@@ -45,9 +46,18 @@ TOTAL_BASE_CONSUMPTION_KW = sum(ZONES.values())
 # The demo factory's rooftop array. Deliberately bigger than its ~90 kW daytime
 # load: with the old 100 kWp array the solar never exceeded the load, so the sun
 # could never charge the battery and "wait for the sun" could never be shown.
+DEMO_NAME = "Munich demo factory"
+DEMO_TIMEZONE = "Europe/Berlin"     # where the plant is; the UI shows times in it
 DEMO_SOLAR_KWP = 250.0
 # Weather forecasts are computed for a 100 kWp reference array; scale to ours.
 _SOLAR_SCALE = DEMO_SOLAR_KWP / F.SOLAR_NAMEPLATE_KW
+_SITE_TZ = ZoneInfo(DEMO_TIMEZONE)
+
+
+def site_hour(dt: datetime) -> int:
+    """Hour of day on the PLANT's clock (summer/winter time included). Tariffs,
+    the work-day pattern and grid carbon all follow local time, not UTC (#18)."""
+    return dt.astimezone(_SITE_TZ).hour
 
 
 def expected_load_kw(hour: int) -> float:
@@ -115,9 +125,9 @@ class FacilitySimulator:
         """The single source for both the simulated readings and the load forecast."""
         return expected_load_kw(hour)
 
-    def get_consumption(self) -> ConsumptionReading:
-        now = datetime.now(timezone.utc)
-        scale = self.expected_load_kw(now.hour) / TOTAL_BASE_CONSUMPTION_KW
+    def get_consumption(self, now: Optional[datetime] = None) -> ConsumptionReading:
+        now = now or datetime.now(timezone.utc)
+        scale = self.expected_load_kw(site_hour(now)) / TOTAL_BASE_CONSUMPTION_KW
         noise = random.uniform(0.95, 1.05)
         zones = {k: round(v * scale * noise, 2) for k, v in ZONES.items()}
         return ConsumptionReading(
@@ -128,7 +138,7 @@ class FacilitySimulator:
 
     def get_grid(self, net_import_kw: float) -> GridReading:
         now = datetime.now(timezone.utc)
-        tariff = PEAK_TARIFF if 7 <= now.hour < 22 else OFFPEAK_TARIFF
+        tariff = DEMO_CFG.tariff(site_hour(now))
         return GridReading(
             timestamp=now,
             # `+ 0.0` normalises -0.0 → 0.0 so an idle grid never serialises as -0.0
@@ -160,15 +170,14 @@ class FacilitySimulator:
         self._solar_kwh_total += solar_kwh
         self._grid_kwh_total += grid_kwh
 
-        now = datetime.now(timezone.utc)
+        hour = site_hour(datetime.now(timezone.utc))
 
         # CO2 avoided = self-consumed solar × the grid's carbon intensity right
         # now (time-varying: night grid is cleaner). Single source of truth.
-        self._co2_saved_total += self_used_solar_kwh * F.grid_co2(now.hour)
+        self._co2_saved_total += self_used_solar_kwh * F.grid_co2(hour)
 
         # Cost saved vs. grid reference price (use current tariff)
-        tariff = PEAK_TARIFF if 7 <= now.hour < 22 else OFFPEAK_TARIFF
-        self._cost_saved_total += self_used_solar_kwh * tariff
+        self._cost_saved_total += self_used_solar_kwh * DEMO_CFG.tariff(hour)
 
     @property
     def co2_saved_kg(self) -> float:
@@ -184,7 +193,8 @@ class FacilitySimulator:
         return round(self._solar_kwh_total / total, 3) if total > 0 else 0.0
 
     def _simulate_solar(self, dt: datetime) -> float:
-        hour = dt.hour + dt.minute / 60
+        local = dt.astimezone(_SITE_TZ)
+        hour = local.hour + local.minute / 60
         if 6 <= hour <= 20:
             angle = math.pi * (hour - 6) / 14
             # Clear-sky peak of THIS array, from the demo config, so live data

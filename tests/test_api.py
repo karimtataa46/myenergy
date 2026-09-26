@@ -10,7 +10,7 @@ import pytest
 
 
 class TestPages:
-    @pytest.mark.parametrize("path", ["/", "/estimate", "/facility", "/sim"])
+    @pytest.mark.parametrize("path", ["/", "/estimate", "/facility", "/sim", "/plan"])
     def test_html_pages_load(self, client, path):
         r = client.get(path)
         assert r.status_code == 200
@@ -112,3 +112,39 @@ class TestSimSession:
         r2 = client.get("/api/sim/live", params={"session": "sim-test-1", "speed": 1.0})
         assert r2.status_code == 200
         assert isinstance(r2.json(), dict)
+
+
+class TestPlanEndpoint:
+    """GET /api/plan: the planner's timeline, summary and story (#16)."""
+
+    def test_returns_a_full_plan(self, client):
+        d = client.get("/api/plan").json()
+        assert d["available"] is True
+        assert d["story"]["tone"] in ("sun", "buy", "hold")
+        assert d["story"]["headline"] and d["story"]["detail"]
+        assert {"buy_tonight_kwh", "buy_without_sun_kwh", "buy_from", "buy_until", "solar_to_battery_kwh",
+                "fullest_battery_pct", "fullest_at"} <= d["summary"].keys()
+        assert len(d["hours"]) > 0
+        h = d["hours"][0]
+        assert {"time", "label", "solar_kw", "load_kw", "grid_buy_kw", "battery_pct",
+                "price", "cheap"} <= h.keys()
+        assert all(len(x["label"]) == 5 and x["label"][2] == ":" for x in d["hours"])  # HH:MM
+        assert d["site"]["timezone"] == "Europe/Berlin"
+
+    def test_without_a_forecast_says_so_instead_of_failing(self, client, monkeypatch):
+        import main
+        monkeypatch.setattr(main, "forecast_cache", [])
+        r = client.get("/api/plan")
+        assert r.status_code == 200
+        assert r.json()["available"] is False
+        assert "safe rules" in r.json()["message"]
+
+    def test_timeline_matches_the_cards(self, client):
+        # The chart point at the "fullest" time must show the same level as the card,
+        # and the first point is the battery level right now (values sit AT their label).
+        import main
+        d = client.get("/api/plan").json()
+        at = {h["label"]: h for h in d["hours"]}
+        s = d["summary"]
+        assert round(at[s["fullest_at"]]["battery_pct"]) == s["fullest_battery_pct"]
+        assert abs(d["hours"][0]["battery_pct"] - main.facility.battery_soc) < 1.0
