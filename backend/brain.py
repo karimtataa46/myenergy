@@ -310,7 +310,9 @@ def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
             # comes only from the surplus that exists right now, and it buys from
             # the grid only as much as it meant to buy. A forecast that was a bit
             # too sunny must never turn into buying peak-price power (bug #15).
-            planned = min(planned, surplus + max(inp.planned_grid_charge_kw, 0.0))
+            # Under 0.5 kW the "grid part" is solver rounding noise, not a purchase (#19).
+            grid_allowance = inp.planned_grid_charge_kw if inp.planned_grid_charge_kw > 0.5 else 0.0
+            planned = min(planned, surplus + grid_allowance)
             planned = max(0.0, min(planned, inp.demand_target_kw - deficit))  # demand cap
 
     grid_kw = deficit + planned

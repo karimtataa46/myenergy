@@ -184,6 +184,15 @@ class TestFollowPlan:
         assert d.action == GridAction.BATTERY_CHARGE_FROM_SOLAR
         assert "24 kW" in d.reason
 
+    def test_solver_noise_is_not_a_grid_purchase(self, make_input):
+        # Regression for bug #19. The plan meant "charge from the sun", but its grid
+        # part is 0.3 kW of rounding noise. Live surplus is only 9 kW: store 9, buy nothing.
+        d = brain.decide(make_input(base=90, solar=99, soc=60, tariff=0.28, planned=34,
+                                    planned_grid=0.3, plan_reason="Storing 34 kW of free solar surplus"))
+        assert d.battery_kw == pytest.approx(9)
+        assert d.grid_kw == pytest.approx(0)
+        assert d.reason.startswith("Storing 9 kW")
+
     def test_demand_cap_limits_grid_charging(self, make_input):
         d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=50, planned_grid=50,
                                     demand=40))
