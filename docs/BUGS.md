@@ -7,9 +7,10 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 9 logged, 9 fixed. 2 caught by the automated test suite, 1 by a
-scenario experiment, 6 by manual review during development (before the suite
-existed which is exactly why the suite is being built now).
+**Status:** 10 logged, 10 fixed. 2 caught by the automated test suite, 1 by a
+scenario experiment, 1 by a live run against real weather, 6 by manual review
+during development (before the suite existed which is exactly why the suite is
+being built now).
 
 ### Severity
 | Level | Meaning |
@@ -23,6 +24,7 @@ existed which is exactly why the suite is being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#15](https://github.com/karimtataa46/myenergy/issues/15) | Medium | `brain.py` | Following a solar-charging plan bought peak-price grid power when the live surplus was smaller than the forecast (label "from grid", reason "free solar") | **live run** against the real Open-Meteo forecast; regression: `test_solar_plan_never_buys_peak_grid_when_the_sun_falls_short` | ✅ Fixed | `247d67a` |
 | [#12](https://github.com/karimtataa46/myenergy/issues/12) | Medium | `brain.py` | A battery at or below 15% was never recharged (not at the cheap night rate, not from solar surplus), so it stayed pinned at the floor | **scenario experiment** (sunny vs cloudy simulation); regression: `TestCriticalBattery` | ✅ Fixed | `4db76a1` |
 | [#11](https://github.com/karimtataa46/myenergy/issues/11) | Low | `estimate_service.py` | Monthly and annual savings didn't reconcile (€887/mo shown as €10,650/yr, not €10,644) | **automated test** (`test_annual_is_twelve_times_monthly`) | ✅ Fixed | `d08695b` |
 | [#10](https://github.com/karimtataa46/myenergy/issues/10) | High | `models.py` | `urgency()` raised `ZeroDivisionError` for a device with `power_draw_kw = 0` | **automated test** (`test_zero_power_does_not_crash`) | ✅ Fixed | `d1592b6` |
