@@ -7,10 +7,10 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 12 logged, 12 fixed. 2 caught by the automated test suite, 1 by a
-scenario experiment, 1 by a live run against real weather, 2 by checking the new
-plan dashboard against real data, 6 by manual review during development (before
-the suite existed which is exactly why the suite is being built now).
+**Status:** 13 logged, 13 fixed. 2 caught by the automated test suite, 1 by a
+scenario experiment, 1 by a live run against real weather, 3 by checking the user
+interface against real data, 6 by manual review during development (before the
+suite existed which is exactly why the suite is being built now).
 
 ### Severity
 | Level | Meaning |
@@ -24,6 +24,7 @@ the suite existed which is exactly why the suite is being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#22](https://github.com/karimtataa46/myenergy/issues/22) | Medium | `planner.py`, `brain.py` | The "right now" sentence contradicted the power flow: "the grid covers the load" while the plant exported 31 kW of solar surplus | **interface check** against live data; regression: `test_the_sentence_matches_the_actual_power_flow` | ✅ Fixed | `bfc7d2f` |
 | [#19](https://github.com/karimtataa46/myenergy/issues/19) | Low | `brain.py` | Solver rounding noise (a fraction of a kW) let a solar-charging plan buy a little peak-price grid power, and the reason claimed more storage than was happening | **dashboard check** against live data; regression: `test_solver_noise_is_not_a_grid_purchase` | ✅ Fixed | `96a7837` |
 | [#18](https://github.com/karimtataa46/myenergy/issues/18) | Medium | `main.py`, `simulator.py` | Demo tariff, work-day load and CO2 followed UTC hours instead of the plant's local time (cheap power "ran until 09:00" in Munich) | **dashboard check**: the plan read wrong in local time; regression: `tests/test_site_time.py` | ✅ Fixed | `cb10077` |
 | [#15](https://github.com/karimtataa46/myenergy/issues/15) | Medium | `brain.py` | Following a solar-charging plan bought peak-price grid power when the live surplus was smaller than the forecast (label "from grid", reason "free solar") | **live run** against the real Open-Meteo forecast; regression: `test_solar_plan_never_buys_peak_grid_when_the_sun_falls_short` | ✅ Fixed | `247d67a` |
