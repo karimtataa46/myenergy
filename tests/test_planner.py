@@ -45,6 +45,15 @@ class TestPlannerDecisions:
         max_discharge = (0.25 - RESERVE) * 200 * CFG.discharge_efficiency
         assert p.battery_kw >= -max_discharge - 0.1
 
+    def test_idle_battery_with_surplus_explains_the_export(self, make_battery):
+        # Bug #22. One clearly right answer: noon, battery full, 50 kW surplus for 6 h,
+        # then sunless peak hours. Keep the battery full for later, export the surplus.
+        solar = [150.0] * 6 + [0.0] * (HORIZON_HOURS - 6)
+        load = [100.0] * 6 + [50.0] * (HORIZON_HOURS - 6)
+        p = planner.make_plan(make_battery(soc=95), PlanningForecast(12, solar, load), CFG, RESERVE, FULL)
+        assert abs(p.battery_kw) < 0.5
+        assert p.reason == "Exporting 50 kW of solar surplus, battery full", p.reason
+
     def test_no_forecast_hours_means_no_plan(self, make_battery):
         assert plan(make_battery(soc=50), [], load=[]) is None
 

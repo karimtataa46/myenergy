@@ -75,7 +75,7 @@ def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
     full = soc_kwh >= plan_cfg.battery_max_soc * battery.capacity_kwh - 1.0
 
     reason = _explain(battery_kw, grid_charge_now, solar_to_battery, price[0],
-                      cfg.is_peak(forecast.hour), full)
+                      cfg.is_peak(forecast.hour), full, surplus_now=surplus[0])
     timeline = [
         PlanHour(offset=k, solar_kw=solar[k], load_kw=load[k],
                  grid_buy_kw=float(charge[k] - from_solar[k]),
@@ -166,8 +166,10 @@ def summarize(plan: Plan, fmt_time: Callable[[int], str],
                        fullest.offset, tone, headline, detail)
 
 
-def _explain(battery_kw, grid_charge_now, solar_to_battery, price, is_peak, full) -> str:
-    """One sentence a facility manager can read on the dashboard."""
+def _explain(battery_kw, grid_charge_now, solar_to_battery, price, is_peak, full,
+             surplus_now=0.0) -> str:
+    """One sentence a facility manager can read on the dashboard. It must match the
+    power flow: with a solar surplus and an idle battery, the surplus is exported (#22)."""
     if battery_kw > 0.5 and grid_charge_now > 0.5:
         return (f"Buying {grid_charge_now:.0f} kW at €{price:.2f}: the forecast sun will "
                 f"only add ~{solar_to_battery:.0f} kWh, not enough for what's ahead")
@@ -178,6 +180,10 @@ def _explain(battery_kw, grid_charge_now, solar_to_battery, price, is_peak, full
                 f"with ~{solar_to_battery:.0f} kWh for free")
     if battery_kw < -0.5:
         return f"Discharging {-battery_kw:.0f} kW to avoid €{price:.2f} grid power"
+    if surplus_now > 0.5:
+        if full:
+            return f"Exporting {surplus_now:.0f} kW of solar surplus, battery full"
+        return f"Exporting {surplus_now:.0f} kW of solar surplus; the battery fills from the sun later"
     if full:
         return f"Battery full, the grid covers the load at €{price:.2f}"
     if not is_peak and solar_to_battery > 5:

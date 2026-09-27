@@ -337,6 +337,20 @@ def _follow_plan(inp: BrainInput, now, solar: float, total_load: float,
         else:
             reason += " (limited by the safety envelope)"
 
+    # The sentence must never contradict the actual power flow (#22). The plan was
+    # written for the forecast hour; live readings can differ, so with an idle
+    # battery the live grid flow has the final word.
+    if abs(planned) <= 0.5:
+        if grid_kw < -0.5:
+            exporting = f"Exporting {-grid_kw:.0f} kW of solar surplus"
+            plan_why = inp.plan_reason or ""
+            if plan_why.startswith("Exporting") and ";" in plan_why:
+                reason = exporting + plan_why[plan_why.index(";"):]      # keep the plan's why
+            else:
+                reason = exporting + (", battery full" if bat.is_full else "")
+        elif grid_kw > 0.5 and "xporting" in reason:
+            reason = f"Holding the battery, the grid covers {grid_kw:.0f} kW"
+
     return EnergyDecision(
         timestamp=now,
         action=action,

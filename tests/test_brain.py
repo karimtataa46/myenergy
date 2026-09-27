@@ -193,6 +193,21 @@ class TestFollowPlan:
         assert d.grid_kw == pytest.approx(0)
         assert d.reason.startswith("Storing 9 kW")
 
+    @pytest.mark.parametrize("base, solar, planned, plan_reason", [
+        (118, 149, 0, "Holding the battery, the grid covers the load at €0.28"),   # bug #22
+        (90, 40, 0, "Exporting 20 kW of solar surplus now"),       # forecast said surplus, reality didn't
+        (20, 60, 0, "Waiting for the sun: the forecast will put ~150 kWh in"),
+    ])
+    def test_the_sentence_matches_the_actual_power_flow(self, make_input, base, solar, planned, plan_reason):
+        # Regression for bug #22: whatever the plan said, the sentence may never
+        # contradict what the grid is actually doing.
+        d = brain.decide(make_input(base=base, solar=solar, soc=60, planned=planned,
+                                    plan_reason=plan_reason))
+        if d.grid_kw < -0.5:
+            assert d.reason.startswith(f"Exporting {-d.grid_kw:.0f} kW"), d.reason
+        if d.grid_kw > 0.5:
+            assert "xporting" not in d.reason, d.reason
+
     def test_demand_cap_limits_grid_charging(self, make_input):
         d = brain.decide(make_input(base=27, soc=60, tariff=0.12, planned=50, planned_grid=50,
                                     demand=40))
