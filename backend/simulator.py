@@ -46,7 +46,8 @@ TOTAL_BASE_CONSUMPTION_KW = sum(ZONES.values())
 # The demo factory's rooftop array. Deliberately bigger than its ~90 kW daytime
 # load: with the old 100 kWp array the solar never exceeded the load, so the sun
 # could never charge the battery and "wait for the sun" could never be shown.
-DEMO_NAME = "Munich demo factory"
+DEMO_NAME = "Munich factory"
+DEMO_LOCATION = "Munich, Germany"
 DEMO_TIMEZONE = "Europe/Berlin"     # where the plant is; the UI shows times in it
 DEMO_SOLAR_KWP = 250.0
 # Weather forecasts are computed for a 100 kWp reference array; scale to ours.

@@ -10,11 +10,33 @@ import pytest
 
 
 class TestPages:
-    @pytest.mark.parametrize("path", ["/", "/estimate", "/facility", "/sim", "/plan"])
-    def test_html_pages_load(self, client, path):
-        r = client.get(path)
+    def test_the_one_interface_loads(self, client):
+        r = client.get("/")
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]
+
+    @pytest.mark.parametrize("path", ["/estimate", "/facility", "/sim", "/plan"])
+    def test_the_old_pages_are_gone(self, client, path):
+        # One interface for the operator (#21): the old pages were removed on purpose.
+        assert client.get(path).status_code == 404
+
+
+class TestSite:
+    """GET /api/site: the operator's plant, always available (#21)."""
+
+    def test_describes_the_plant(self, client):
+        d = client.get("/api/site").json()
+        assert d["name"] and d["location"] and d["timezone"] == "Europe/Berlin"
+        assert d["solar_kwp"] == 250 and d["battery_kwh"] == 200
+        assert d["reserve_pct"] == 20
+        assert (d["cheap_from"], d["cheap_until"]) == ("22:00", "07:00")
+        assert d["cheap_price"] < d["peak_price"]
+        assert [x["name"] for x in d["devices"]] == ["Delivery Van EV", "Industrial Water Heater"]
+
+    def test_works_without_a_forecast(self, client, monkeypatch):
+        import main
+        monkeypatch.setattr(main, "forecast_cache", [])
+        assert client.get("/api/site").json()["solar_kwp"] == 250
 
 
 class TestReadEndpoints:

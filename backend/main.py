@@ -31,7 +31,7 @@ import planner
 from zoneinfo import ZoneInfo
 from engine import HORIZON_HOURS
 from live_sim import live_sim
-from brain import BrainInput
+from brain import BrainInput, BATTERY_RESERVE_SOC
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from models import ShiftableDevice, PlanningForecast
@@ -334,19 +334,11 @@ async def get_savings():
     return await asyncio.to_thread(savings_module.month_to_date)
 
 
-# -- Live simulation session (per-second savings from the real engine) ------
-
-@app.get("/sim")
-async def sim_page():
-    return _page("sim.html")
-
-
-#  Per-user estimate: user enters their facility, gets their own savings
-
-@app.get("/estimate")
-async def estimate_page():
-    return _page("estimate.html")
-
+# -- Developer APIs: no longer used by the user interface ---------------------
+# The accelerated simulation (/api/sim/*) and the prospect estimate
+# (/api/estimate, /api/cities, /api/facility/*) served pages that were removed
+# when the UI became one operator interface (#21). Kept until we decide whether
+# they come back (e.g. as onboarding) or go.
 
 @app.get("/api/cities")
 async def api_cities(q: str = ""):
@@ -363,11 +355,32 @@ async def api_estimate(inp: EstimateIn):
     )
 
 
-#  The plan: what the system will do over the coming hours, and why
+#  The operator's system and plan
 
-@app.get("/plan")
-async def plan_page():
-    return _page("plan.html")
+def _site_info() -> dict:
+    """Facts about the operator's plant: always available, forecast or not."""
+    cfg = DEMO_CFG
+    return {
+        "name": sim_module.DEMO_NAME,
+        "location": sim_module.DEMO_LOCATION,
+        "timezone": sim_module.DEMO_TIMEZONE,
+        "solar_kwp": cfg.solar_nameplate_kw,
+        "battery_kwh": cfg.battery_capacity_kwh,
+        "battery_power_kw": cfg.battery_max_charge_kw,
+        "reserve_pct": round(BATTERY_RESERVE_SOC),
+        "cheap_price": cfg.offpeak_tariff,
+        "peak_price": cfg.peak_tariff,
+        "feed_in_price": cfg.feed_in_tariff,
+        "cheap_from": f"{cfg.peak_end:02d}:00",      # the cheap rate runs from the end of peak ...
+        "cheap_until": f"{cfg.peak_start:02d}:00",   # ... until peak starts again
+        "devices": [{"name": d.name, "power_kw": d.power_draw_kw} for d in system_devices],
+    }
+
+
+@app.get("/api/site")
+async def api_site():
+    """The operator's plant: location, sizes, prices and controlled devices."""
+    return _site_info()
 
 
 def _plan_response(now: Optional[datetime] = None) -> dict:
@@ -391,14 +404,7 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
         "available": True,
         "generated_at": now.isoformat(),
         "forecast_fetched_at": fetched.isoformat() if fetched else None,
-        "site": {
-            "name": sim_module.DEMO_NAME,
-            "timezone": sim_module.DEMO_TIMEZONE,
-            "solar_kwp": DEMO_CFG.solar_nameplate_kw,
-            "battery_kwh": DEMO_CFG.battery_capacity_kwh,
-            "cheap_price": DEMO_CFG.offpeak_tariff,
-            "peak_price": DEMO_CFG.peak_tariff,
-        },
+        "site": _site_info(),
         "story": {"tone": s.tone, "headline": s.headline, "detail": s.detail},
         "summary": {
             "buy_tonight_kwh": round(s.buy_tonight_kwh),
@@ -428,13 +434,6 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
 async def api_plan():
     """What the system plans to do over the coming hours, and why."""
     return await asyncio.to_thread(_plan_response)
-
-
-#  Live per-user facility dashboard (the /estimate -> live view)
-
-@app.get("/facility")
-async def facility_page():
-    return _page("facility.html")
 
 
 @app.post("/api/facility/start")

@@ -21,12 +21,19 @@ any hand written rules.
 
 ## What it does
 
-| Surface | What it shows |
-|---------|---------------|
-| `/` | Live dashboard for a simulated factory: self powered %, battery / solar / grid state, month to date savings, the current decision, power flow and forecast. |
-| `/plan` | The plan for the next day and a half: what the system will buy tonight and why, what the forecast sun will add, how full the battery gets, and the hour-by-hour timeline behind it (in the plant's local time). |
-| `/estimate` | Enter your own site (city, solar kWp, battery kWh, monthly usage) and get a predictive savings estimate plus a live dashboard for that facility. |
-| `/sim` | Accelerated savings session: runs the optimiser against a plain baseline in fast forward and banks the gap second by second. |
+One interface, at `/`, for the person who operates the plant. Its sections follow
+the operator's questions, in order:
+
+| Section | Answers |
+|---------|---------|
+| **Right now** | Is it working, and what is it doing? One sentence plus solar, consumption, battery and grid, with the current price. A status pill says if there's no forecast or the plant can't be reached. |
+| **Tonight and tomorrow** | What will it do, and why? The plan's story, the grid energy bought tonight, the free solar stored, and the hour-by-hour timeline. |
+| **Savings** | What is it saving? This month, the projected month and CO2 avoided, estimated against a plain controller on the same hardware. |
+| **Your system** | What is my plant? Location, solar and battery size, reserve, prices and the devices it controls. |
+
+All times are in the plant's local time. The simulated plant behind it is a
+development tool: it lets the test suite prove the system works, and is not part
+of the user's interface.
 
 ## How it works
 
