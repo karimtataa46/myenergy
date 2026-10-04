@@ -35,6 +35,18 @@ All times are in the plant's local time. The simulated plant behind it is a
 development tool: it lets the test suite prove the system works, and is not part
 of the user's interface.
 
+### AI agents (n8n + Claude)
+
+On top of the API run two n8n workflows with Claude as the language model
+(details in [automation/README.md](automation/README.md)):
+
+* **Frag deine Anlage**: a chat agent that answers the operator's questions in German or
+  English by calling the myEnergy API as tools, with a system prompt that only allows
+  answers grounded in the plant's real numbers.
+* **Daily briefing**: every morning a short German briefing about today and tonight.
+* **Evaluation**: one command asks the agent 19 questions and grades every answer against
+  the API's numbers at that moment, including questions it must decline.
+
 ## How it works
 
 The project is split into a validated simulation core and a web plus control layer
@@ -56,6 +68,9 @@ simulation/        the validated, tested core
   optimizer.py       Model Predictive Control via linear programming (SciPy)
   controllers.py     reactive and predictive controllers
   test_*.py          the test suites
+automation/        AI agents on top of the API (n8n + Claude)
+  workflows/         the n8n workflows, versioned as JSON
+  evals/             the agent's evaluation set and runner
 ```
 
 ### The decision engine
@@ -83,6 +98,12 @@ docker build -t myenergy .
 docker run -p 8000:8000 myenergy
 ```
 
+To run it together with n8n and the AI agents, use Docker Compose:
+
+```bash
+docker compose up -d
+```
+
 
 ## Run it without Docker
 
@@ -102,9 +123,10 @@ live). It covers the full test pyramid:
 | **Unit** | decision rules, engine physics, pricing, models, forecast maths | pytest, fixtures, `parametrize` |
 | **Integration** | services wired together, Open-Meteo HTTP calls mocked | `monkeypatch` test doubles |
 | **API** | every endpoint, happy paths and error / 422 paths | FastAPI `TestClient` |
-| **E2E** | the `/estimate` flow driven in a real headless browser | Playwright |
+| **E2E** | the operator interface in a real headless browser | Playwright |
+| **AI agents** | the n8n workflows match the API, and the eval's grader passes good answers and fails bad ones | pytest |
 
-**152 automated checks** (101 pytest, plus 39 engine and 12 optimiser proofs), with a
+**252 automated checks** (201 pytest, plus 39 engine and 12 optimiser proofs), with a
 coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
 guarded by a regression test, and recorded in the [defect log](docs/BUGS.md).
 
@@ -120,6 +142,10 @@ pytest -m "not e2e"                      # skip the slow browser tests
 
 ## Tech stack
 
-Python, FastAPI, Docker, SciPy (linear programming), SQLite, Open-Meteo, vanilla JavaScript.
+Python, FastAPI, Docker and Docker Compose, SciPy (linear programming), SQLite, Open-Meteo,
+vanilla JavaScript.
+
+**AI and automation:** n8n (AI Agent, tools, memory, scheduled workflows), Claude API,
+prompt engineering, LLM evaluation.
 
 **Testing and CI:** pytest, pytest-cov, FastAPI TestClient, Playwright, GitHub Actions.
