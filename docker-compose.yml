@@ -22,12 +22,18 @@ services:
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.41.6
     ports:
-      - "5678:5678"
+      # Only this computer can reach n8n. The chat is public (no login), so on the
+      # local network anyone could otherwise use it and spend the API credits.
+      - "127.0.0.1:5678:5678"
     environment:
       GENERIC_TIMEZONE: Europe/Berlin
       TZ: Europe/Berlin
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
+      # n8n is served over plain http://localhost here, and Safari refuses a
+      # secure login cookie without HTTPS. Safe only because of the binding above:
+      # put n8n behind HTTPS before it is ever reachable from another machine.
+      N8N_SECURE_COOKIE: "false"
       # The workflows read the API address from here, so the same JSON works
       # in Docker (service name) and elsewhere (change one variable).
       MYENERGY_URL: http://myenergy:8000
