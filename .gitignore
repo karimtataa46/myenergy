@@ -26,3 +26,8 @@ htmlcov/
 
 # local editor / Claude Code tooling (machine-specific paths)
 .claude/
+
+# n8n automation outputs (generated)
+automation/evals/results/
+automation/briefings/*.md
+automation/dev/requests.jsonl
