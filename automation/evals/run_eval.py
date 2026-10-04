@@ -73,6 +73,22 @@ def snapshot(api_url):
     return {name: http_json(f"{api_url}/api/{name}") for name in ("live", "plan", "savings", "site")}
 
 
+def preflight(args):
+    """Stop at once, with the fix, when nothing could be answered (instead of 19 errors)."""
+    try:
+        http_json(f"{args.api_url}/api/site", timeout=10)
+    except Exception as e:
+        sys.exit(f"Can't reach myEnergy at {args.api_url} ({e}). Start it: docker compose up -d")
+    try:
+        urllib.request.urlopen(args.chat_url, timeout=10)    # GET serves the chat page, no model call
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            sys.exit("The chat workflow isn't published in n8n. Open 'Frag deine Anlage', connect "
+                     "the model credential, and click Publish.")
+    except urllib.error.URLError as e:
+        sys.exit(f"Can't reach n8n at {args.chat_url} ({e.reason}). Start it: docker compose up -d")
+
+
 def wilson(passed, n, z=1.96):
     if n == 0:
         return 0.0, 0.0
@@ -147,6 +163,7 @@ def main():
     p.add_argument("--min-pass-rate", type=float, help="exit 1 below this (0 to 1), for CI")
     args = p.parse_args()
 
+    preflight(args)
     cases = json.loads((HERE / "cases.json").read_text())
     if args.only:
         cases = [c for c in cases if c["id"] == args.only or args.only in c.get("tags", [])]
