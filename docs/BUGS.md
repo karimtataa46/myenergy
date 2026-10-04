@@ -7,9 +7,10 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 13 logged, 13 fixed. 2 caught by the automated test suite, 1 by a
-scenario experiment, 1 by a live run against real weather, 3 by checking the user
-interface against real data, 6 by manual review during development (before the
+**Status:** 15 logged, 13 fixed, 2 fixed and waiting for a re-run of the agent's
+evaluation. 2 caught by the automated test suite, 1 by a scenario experiment, 1 by a live
+run against real weather, 3 by checking the user interface against real data, 2 by the AI
+agent's evaluation against the live API, 6 by manual review during development (before the
 suite existed which is exactly why the suite is being built now).
 
 ### Severity
@@ -24,6 +25,8 @@ suite existed which is exactly why the suite is being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#29](https://github.com/karimtataa46/myenergy/issues/29) | Low | chat agent (`get_live` tool description) | The agent called the plant "155 kWp": it read the clear-day peak output (155 kW) as the array's size (250 kWp) | **reading the eval's answers** (the grader can't catch a real number with the wrong meaning); regression: eval case `site-array-en` | 🔧 Fixed, re-run pending | PR #27 |
+| [#28](https://github.com/karimtataa46/myenergy/issues/28) | Medium | chat agent (system prompt) | English questions got German answers (3 of 3 in the first run) | **agent eval** (`language` check); regression: every English eval case | 🔧 Fixed, re-run pending | PR #27 |
 | [#22](https://github.com/karimtataa46/myenergy/issues/22) | Medium | `planner.py`, `brain.py` | The "right now" sentence contradicted the power flow: "the grid covers the load" while the plant exported 31 kW of solar surplus | **interface check** against live data; regression: `test_the_sentence_matches_the_actual_power_flow` | ✅ Fixed | `bfc7d2f` |
 | [#19](https://github.com/karimtataa46/myenergy/issues/19) | Low | `brain.py` | Solver rounding noise (a fraction of a kW) let a solar-charging plan buy a little peak-price grid power, and the reason claimed more storage than was happening | **dashboard check** against live data; regression: `test_solver_noise_is_not_a_grid_purchase` | ✅ Fixed | `96a7837` |
 | [#18](https://github.com/karimtataa46/myenergy/issues/18) | Medium | `main.py`, `simulator.py` | Demo tariff, work-day load and CO2 followed UTC hours instead of the plant's local time (cheap power "ran until 09:00" in Munich) | **dashboard check**: the plan read wrong in local time; regression: `tests/test_site_time.py` | ✅ Fixed | `cb10077` |

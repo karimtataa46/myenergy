@@ -1,0 +1,57 @@
+# myEnergy and its AI agents, started together with one command:
+#
+#   docker compose up -d
+#
+#   myEnergy   http://localhost:8000   the operator interface and the REST API
+#   n8n        http://localhost:5678   the AI agent workflows (see automation/README.md)
+#
+# Inside this network n8n reaches the API by service name: http://myenergy:8000
+
+services:
+  myenergy:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # "Ask your plant" in the interface passes questions to the n8n chat agent here.
+      # Without it (like the public demo) the interface simply hides the assistant.
+      AGENT_URL: http://n8n:5678/webhook/f3a1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/chat
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/site')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.41.6
+    ports:
+      # Only this computer can reach n8n. The chat is public (no login), so on the
+      # local network anyone could otherwise use it and spend the API credits.
+      - "127.0.0.1:5678:5678"
+    environment:
+      GENERIC_TIMEZONE: Europe/Berlin
+      TZ: Europe/Berlin
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      # n8n is served over plain http://localhost here, and Safari refuses a
+      # secure login cookie without HTTPS. Safe only because of the binding above:
+      # put n8n behind HTTPS before it is ever reachable from another machine.
+      N8N_SECURE_COOKIE: "false"
+      # The workflows read the API address from here, so the same JSON works
+      # in Docker (service name) and elsewhere (change one variable).
+      MYENERGY_URL: http://myenergy:8000
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./automation/workflows:/workflows
+      # The daily briefing writes its Markdown files here. n8n may only write
+      # inside ~/.n8n-files, so the folder is mounted there.
+      - ./automation/briefings:/home/node/.n8n-files/briefings
+    depends_on:
+      myenergy:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  n8n_data:

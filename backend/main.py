@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
 import database
@@ -28,11 +28,12 @@ import facility_live
 import pricing_service
 import energy_manager
 import planner
+import assistant
 from zoneinfo import ZoneInfo
 from engine import HORIZON_HOURS
 from live_sim import live_sim
 from brain import BrainInput, BATTERY_RESERVE_SOC
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from models import ShiftableDevice, PlanningForecast
 
@@ -434,6 +435,45 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
 async def api_plan():
     """What the system plans to do over the coming hours, and why."""
     return await asyncio.to_thread(_plan_response)
+
+
+#  The AI assistant ("Frag deine Anlage", the n8n agent; see assistant.py)
+
+class AskIn(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    session_id: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+
+
+ask_limiter = assistant.RateLimiter()
+
+
+def _ask_error(status: int, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"error": message})
+
+
+@app.get("/api/assistant")
+async def api_assistant():
+    """Whether the assistant is running, so the interface only offers it when it can answer."""
+    return {"available": await asyncio.to_thread(assistant.available)}
+
+
+@app.post("/api/ask")
+async def api_ask(inp: AskIn, request: Request):
+    """One question to the assistant, answered from the plant's live data."""
+    question = inp.question.strip()
+    if not question:
+        return _ask_error(422, "Please type a question.")
+    if not assistant.configured():
+        return _ask_error(503, "The assistant isn't set up on this server.")
+    if not ask_limiter.allow(request.client.host if request.client else "unknown"):
+        return _ask_error(429, "That's a lot of questions at once. Please wait a minute.")
+    try:
+        answer = await asyncio.to_thread(assistant.ask, question, inp.session_id)
+    except assistant.AgentTimeout as e:
+        return _ask_error(504, str(e))
+    except assistant.AgentError as e:
+        return _ask_error(503, str(e))
+    return {"answer": answer}
 
 
 @app.post("/api/facility/start")

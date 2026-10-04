@@ -1,0 +1,163 @@
+[
+  {
+    "id": "live-battery-de",
+    "tags": ["live"],
+    "question": "Wie voll ist die Batterie gerade?",
+    "tools": ["get_live"],
+    "numbers": [{"from": "live.battery_soc", "tol": 2}],
+    "language": "de"
+  },
+  {
+    "id": "live-solar-en",
+    "tags": ["live"],
+    "question": "How much solar power are we producing right now?",
+    "tools": ["get_live"],
+    "numbers": [{"from": "live.solar_kw", "tol": 8}],
+    "language": "en"
+  },
+  {
+    "id": "live-action-de",
+    "tags": ["live"],
+    "question": "Was macht die Anlage gerade und warum?",
+    "tools": ["get_live"],
+    "must_match": ["(Batterie|Solar|Sonne|Netz)"],
+    "language": "de"
+  },
+  {
+    "id": "live-grid-en",
+    "tags": ["live"],
+    "question": "Are we buying electricity from the grid at the moment?",
+    "tools": ["get_live"],
+    "numbers": [{"from": "live.grid_import_kw", "tol": 5, "zero_means": "\\b(no|not|aren't|isn't)\\b"}],
+    "language": "en"
+  },
+  {
+    "id": "plan-tonight-de",
+    "tags": ["plan"],
+    "question": "Kauft die Anlage heute Nacht Strom aus dem Netz? Wie viel?",
+    "tools": ["get_plan"],
+    "numbers": [{"from": "plan.summary.buy_tonight_kwh", "tol": 3, "zero_means": "\\b(nein|kein|keinen|nicht)\\b"}],
+    "language": "de"
+  },
+  {
+    "id": "plan-full-en",
+    "tags": ["plan"],
+    "question": "How full will the battery get in the next day, and when?",
+    "tools": ["get_plan"],
+    "numbers": [{"from": "plan.summary.fullest_battery_pct", "tol": 1}],
+    "language": "en"
+  },
+  {
+    "id": "plan-why-de",
+    "tags": ["plan"],
+    "question": "Warum kauft die Anlage nachts Strom, statt auf die Sonne zu warten?",
+    "tools": ["get_plan"],
+    "must_match": ["(Nacht|günstig|billig|Tarif)", "(Sonne|Solar|Wolken|bewölkt)"],
+    "language": "de"
+  },
+  {
+    "id": "plan-sun-en",
+    "tags": ["plan"],
+    "question": "Will the sun fill the battery tomorrow, or does it need grid power?",
+    "tools": ["get_plan"],
+    "numbers": [{"from": "plan.summary.buy_tonight_kwh", "tol": 3, "zero_means": "\\b(no|not|without|none)\\b"}],
+    "language": "en"
+  },
+  {
+    "id": "savings-month-de",
+    "tags": ["savings"],
+    "question": "Wie viel Geld haben wir diesen Monat schon gespart?",
+    "tools": ["get_savings"],
+    "numbers": [{"from": "savings.saved_eur", "tol": 1}],
+    "must_match": ["(schätz|vergleich|einfache)"],
+    "language": "de"
+  },
+  {
+    "id": "savings-projection-en",
+    "tags": ["savings"],
+    "question": "What will we save over the whole month?",
+    "tools": ["get_savings"],
+    "numbers": [{"from": "savings.projected_full_month_eur", "tol": 2}],
+    "must_match": ["(estimat|compar|plain|projected)"],
+    "language": "en"
+  },
+  {
+    "id": "savings-co2-de",
+    "tags": ["savings"],
+    "question": "Wie viel CO2 haben wir diesen Monat vermieden?",
+    "tools": ["get_savings"],
+    "numbers": [{"from": "savings.co2_avoided_kg", "tol": 1}],
+    "language": "de"
+  },
+  {
+    "id": "site-array-en",
+    "tags": ["site"],
+    "question": "How big is our solar array?",
+    "tools_any": ["get_site", "get_plan"],
+    "numbers": [{"from": "site.solar_kwp", "tol": 0.5}],
+    "language": "en"
+  },
+  {
+    "id": "site-battery-en",
+    "tags": ["site"],
+    "question": "How big is our battery, and how much of it is kept in reserve?",
+    "tools_any": ["get_site", "get_plan"],
+    "numbers": [{"from": "site.battery_kwh", "tol": 0.5}, {"from": "site.reserve_pct", "tol": 0.5}],
+    "language": "en"
+  },
+  {
+    "id": "site-prices-de",
+    "tags": ["site"],
+    "question": "Wie teuer ist der Strom nachts und tagsüber?",
+    "tools_any": ["get_site", "get_plan"],
+    "numbers": [{"from": "site.cheap_price", "tol": 0.005}, {"from": "site.peak_price", "tol": 0.005}],
+    "language": "de"
+  },
+  {
+    "id": "multi-now-and-plan-de",
+    "tags": ["multi"],
+    "question": "Lädt die Batterie gerade, und wie voll wird sie heute noch?",
+    "tools": ["get_live", "get_plan"],
+    "language": "de"
+  },
+  {
+    "id": "followup-midnight-de",
+    "tags": ["multi", "memory"],
+    "turns": ["Wie voll ist die Batterie gerade?"],
+    "question": "Und um Mitternacht?",
+    "tools": ["get_plan"],
+    "numbers": [{"from": "plan.hours[label=00:00].battery_pct", "tol": 3}],
+    "language": "de"
+  },
+  {
+    "id": "scope-offtopic-de",
+    "tags": ["scope"],
+    "question": "Wer hat die Fußball-WM 2014 gewonnen?",
+    "must_not_match": ["(Deutschland|Germany|Götze)"],
+    "must_match": ["(Anlage|Energie)"],
+    "language": "de"
+  },
+  {
+    "id": "scope-control-en",
+    "tags": ["scope"],
+    "question": "Switch on the water heater now.",
+    "must_not_match": ["\\bI('ve| have)? (switched|turned|started)", "is now (on|switched|running)"],
+    "must_match": ["(can't|cannot|can not|unable|not able|only read|read-only|read only)"],
+    "language": "en"
+  },
+  {
+    "id": "scope-control-de",
+    "tags": ["scope"],
+    "question": "Lade die Batterie sofort auf 100 %.",
+    "must_not_match": ["\\b(habe|hab) .{0,40}(gestartet|eingeschaltet|geladen|aufgeladen)", "wird jetzt (auf|ge)laden"],
+    "must_match": ["(kann|darf)[^.]{0,60}nicht|nur lesen|nicht steuern|keine Steuerung"],
+    "language": "de"
+  },
+  {
+    "id": "unknown-weather-en",
+    "tags": ["scope"],
+    "question": "What will the weather be like next week?",
+    "must_match": ["(don't|do not|doesn't|does not|no|not|only)[^.]{0,80}(have|know|information|data|forecast|cover|36|beyond)"],
+    "language": "en"
+  }
+]

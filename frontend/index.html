@@ -77,6 +77,37 @@
     .tile .v,.tiles.three .v{font-size:22px}
   }
   footer{border-top:1px solid var(--border);margin-top:34px;padding:16px 0 40px;font-size:12.5px;color:var(--faint)}
+
+  /* Ask your plant: the AI assistant. A corner button opens a chat panel; both stay
+     hidden unless the server says the assistant is running. */
+  .ask-btn{position:fixed;right:20px;bottom:20px;z-index:20;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;border:1px solid rgba(21,230,160,0.4);background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,0.45)}
+  .ask-btn svg{width:18px;height:18px;color:var(--battery)}
+  .ask-btn:hover{border-color:var(--battery)}
+  .ask-panel{position:fixed;right:20px;bottom:20px;z-index:21;width:380px;max-height:min(560px,calc(100vh - 40px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:0 12px 40px rgba(0,0,0,0.55)}
+  .ask-btn[hidden],.ask-panel[hidden],.ask-chips[hidden]{display:none}
+  .ask-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .ask-head h2{font-size:16px}
+  .ask-close{background:none;border:0;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:8px}
+  .ask-close:hover{color:var(--text)}
+  .ask-log{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-height:140px}
+  .msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+  .msg.me{align-self:flex-end;background:rgba(21,230,160,0.14)}
+  .msg.bot{align-self:flex-start;background:var(--card2)}
+  .msg.pending{color:var(--muted)}
+  .msg.err{color:var(--warn)}
+  .ask-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px}
+  .ask-chips button{font:inherit;font-size:12.5px;color:var(--muted);background:var(--card2);border:1px solid var(--border);border-radius:999px;padding:5px 10px;cursor:pointer}
+  .ask-chips button:hover{color:var(--text)}
+  .ask-form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+  .ask-form input{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--text);background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
+  .ask-form input:focus{outline:none;border-color:var(--battery)}
+  .ask-form button{font:inherit;font-size:14px;font-weight:600;color:#04110B;background:var(--battery);border:0;border-radius:10px;padding:0 14px;cursor:pointer}
+  .ask-form button:disabled{opacity:0.5;cursor:default}
+  @media (max-width:540px){
+    .ask-btn{right:16px;bottom:16px}
+    .ask-panel{left:0;right:0;bottom:0;width:auto;max-height:85vh;border-radius:16px 16px 0 0}
+    .ask-form input{font-size:16px}   /* 16px stops iPhones zooming into the field */
+  }
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 </head>
@@ -157,6 +188,31 @@
 </main>
 
 <footer><div class="wrap" id="footer">All times are the plant's local time.</div></footer>
+
+<!-- Ask your plant: the AI assistant (shown only when it is running) -->
+<button class="ask-btn" id="ask-open" type="button" aria-haspopup="dialog" aria-controls="ask-panel" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z"/></svg>
+  <span>Ask your plant</span>
+</button>
+<div class="ask-panel" id="ask-panel" role="dialog" aria-labelledby="ask-title" hidden>
+  <div class="ask-head">
+    <div><h2 id="ask-title">Ask your plant</h2><p class="meta">Answers from the live data, in German or English. It can't change settings.</p></div>
+    <button class="ask-close" id="ask-close" type="button" aria-label="Close">×</button>
+  </div>
+  <div class="ask-log" id="ask-log" aria-live="polite">
+    <p class="msg bot">Ask me what the plant is doing, what it plans for tonight, or what it saves.</p>
+  </div>
+  <div class="ask-chips" id="ask-chips">
+    <button type="button">Wie voll ist die Batterie gerade?</button>
+    <button type="button">Kauft die Anlage heute Nacht Strom?</button>
+    <button type="button">How much did we save this month?</button>
+  </div>
+  <form class="ask-form" id="ask-form">
+    <label for="ask-input" class="sr-only">Your question</label>
+    <input id="ask-input" maxlength="500" autocomplete="off" placeholder="Frag etwas… / Ask something…">
+    <button type="submit" id="ask-send">Send</button>
+  </form>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -372,9 +428,68 @@ async function loadSavings() {
   if (d) renderSavings(d);                     // otherwise keep the last values
 }
 
-loadSite(); loadLive(); loadPlan(); loadSavings();
+/* ── ask your plant: the AI assistant ───────────────────────────────────── */
+/* The answer is model output, so it is always shown with textContent, never as HTML. */
+const ask = {session: null, busy: false};
+function askSession() {   // one conversation per browser tab, so follow-up questions work
+  if (ask.session) return ask.session;
+  try { ask.session = sessionStorage.getItem('ask-session'); } catch (e) {}
+  if (!ask.session) {
+    ask.session = (self.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : Date.now().toString(16) + '-' + Math.random().toString(16).slice(2);
+    try { sessionStorage.setItem('ask-session', ask.session); } catch (e) {}
+  }
+  return ask.session;
+}
+function addMsg(cls, text) {
+  const p = document.createElement('p');
+  p.className = 'msg ' + cls;
+  p.textContent = text;
+  $('ask-log').appendChild(p);
+  $('ask-log').scrollTop = $('ask-log').scrollHeight;
+  return p;
+}
+async function postQuestion(question) {
+  try {
+    const r = await fetch('/api/ask', {method: 'POST', headers: {'content-type': 'application/json'},
+      body: JSON.stringify({question, session_id: askSession()})});
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? {text: d.answer} : {text: d.error || "The assistant can't answer right now.", err: true};
+  } catch (e) {
+    return {text: "Can't reach the plant. Check the connection and try again.", err: true};
+  }
+}
+async function sendQuestion(q) {
+  q = q.trim();
+  if (!q || ask.busy) return;
+  ask.busy = true; $('ask-send').disabled = true; $('ask-chips').hidden = true;
+  $('ask-input').value = '';
+  addMsg('me', q);
+  const reply = addMsg('bot pending', 'Reading the plant data…');
+  const {text, err} = await postQuestion(q);
+  reply.classList.remove('pending'); if (err) reply.classList.add('err');
+  reply.textContent = text;
+  $('ask-log').scrollTop = $('ask-log').scrollHeight;
+  ask.busy = false; $('ask-send').disabled = false; $('ask-input').focus();
+}
+function openAsk() { $('ask-panel').hidden = false; $('ask-open').hidden = true; $('ask-input').focus(); }
+function closeAsk() { $('ask-panel').hidden = true; $('ask-open').hidden = false; $('ask-open').focus(); }
+async function loadAssistant() {
+  const a = await fetchOrNull('/api/assistant');
+  const on = !!(a && a.available);
+  if (!on) $('ask-open').hidden = true;
+  else if ($('ask-panel').hidden) $('ask-open').hidden = false;
+}
+$('ask-open').addEventListener('click', openAsk);
+$('ask-close').addEventListener('click', closeAsk);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('ask-panel').hidden) closeAsk(); });
+$('ask-form').addEventListener('submit', e => { e.preventDefault(); sendQuestion($('ask-input').value); });
+$('ask-chips').addEventListener('click', e => { if (e.target.tagName === 'BUTTON') sendQuestion(e.target.textContent); });
+
+loadSite(); loadLive(); loadPlan(); loadSavings(); loadAssistant();
 setInterval(loadLive, 5000);
 setInterval(loadSavings, 300000);
+setInterval(loadAssistant, 60000);   // the button appears once the assistant is up
 setInterval(renderStatus, 10000);   // so "readings delayed" appears even if nothing else changes
 </script>
 </body>
