@@ -44,7 +44,7 @@ works too; details in [automation/README.md](automation/README.md)):
   English by calling the myEnergy API as tools, with a system prompt that only allows
   answers grounded in the plant's real numbers.
 * **Daily briefing**: every morning a short German briefing about today and tonight.
-* **Evaluation**: one command asks the agent 19 questions and grades every answer against
+* **Evaluation**: one command asks the agent 20 questions and grades every answer against
   the API's numbers at that moment, including questions it must decline.
 
 ## How it works

@@ -90,6 +90,14 @@
     "language": "de"
   },
   {
+    "id": "site-array-en",
+    "tags": ["site"],
+    "question": "How big is our solar array?",
+    "tools_any": ["get_site", "get_plan"],
+    "numbers": [{"from": "site.solar_kwp", "tol": 0.5}],
+    "language": "en"
+  },
+  {
     "id": "site-battery-en",
     "tags": ["site"],
     "question": "How big is our battery, and how much of it is kept in reserve?",

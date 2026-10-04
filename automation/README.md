@@ -9,7 +9,7 @@ node (see below).
 |------|--------------|------|
 | **Frag deine Anlage** | A chat agent. The operator asks in German or English ("Kauft die Anlage heute Nacht Strom?") and the model answers by calling the myEnergy API as tools. | `workflows/chat-agent.json` |
 | **Daily briefing** | Every morning at 06:30 the model writes a short German briefing about today and tonight, saved as a Markdown file. | `workflows/daily-briefing.json` |
-| **Evaluation** | One command asks the agent 19 questions and grades each answer against the API at that moment. | `evals/` |
+| **Evaluation** | One command asks the agent 20 questions and grades each answer against the API at that moment. | `evals/` |
 
 ```
 operator ── chat ──▶ n8n: AI Agent ── tools (HTTP GET) ──▶ myEnergy API
@@ -109,7 +109,7 @@ To send it by email or to Microsoft Teams, add that node after the **Briefing** 
 ## Evaluating the agent
 
 ```bash
-python3 automation/evals/run_eval.py --pause 15   # 19 questions, once each (free tier)
+python3 automation/evals/run_eval.py --pause 15   # 20 questions, once each (free tier)
 python3 automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
 python3 automation/evals/run_eval.py --only scope # one tag or one case id
 ```
@@ -145,7 +145,7 @@ An evaluation can be wrong too, so it is tested before its numbers are trusted:
   time filter read prices like `0.12` as clock times.
 * A mutation check: breaking the grader on purpose (grounding always true, language check
   always true) makes those tests fail.
-* A null baseline: a fake model that always dumps raw tool output scores 0 of 19.
+* A null baseline: a fake model that always dumps raw tool output scores 0 of 19 (on the first 19 cases).
 * When the model call fails, the trial lands in `errors.jsonl`, not in the score.
 * `tests/test_workflows.py` checks that every tool calls an endpoint that exists, that the
   prompt names every tool, the model settings, and that no key is committed. Both run in CI
@@ -153,9 +153,10 @@ An evaluation can be wrong too, so it is tested before its numbers are trusted:
 
 ### Limitations
 
-* 19 cases give a wide error bar (about plus or minus 20 points at one repetition). This is a
+* 20 cases give a wide error bar (about plus or minus 20 points at one repetition). This is a
   regression check, not a fine-grained benchmark: use `--reps` and look at the failed trials.
-* The `grounded` check is lenient for plan answers, because the plan holds many numbers.
+* The `grounded` check is lenient for plan answers, because the plan holds many numbers, and
+  it cannot catch a real number used with the wrong meaning (see #29): read the answers too.
 * The scope checks are patterns; an unusual but correct refusal can fail them, so read the
   failed trials before changing the prompt.
 * n8n does not return token usage or the model that served the answer, so the runner cannot
@@ -166,7 +167,21 @@ An evaluation can be wrong too, so it is tested before its numbers are trusted:
 | Date | Setup | Pass rate |
 |------|-------|-----------|
 | 2026-10-04 | Null baseline (fake model that dumps raw tool output) | 0/19 |
-| | Gemini 3 Flash | not run yet |
+| 2026-10-04 | Gemini 3 Flash, first prompt | 4/7 graded; 12 not answered (free-tier daily quota) |
+| | Gemini 3 Flash, language rule fixed | re-run pending |
+
+What the first real run found:
+
+* **Language (#28):** all 3 English questions got German answers; all 4 German ones passed.
+  The language rule is now the first rule and says it explicitly.
+* **Meaning of a number (#29):** one answer called the plant "155 kWp". 155 kW is the
+  clear-day peak output, the array is 250 kWp. The grader could not catch it, because 155 is
+  a real value in the data; reading the answers did. The tool description is clearer now,
+  and a new case asks for the array size.
+* **Data quality held:** every graded answer used the right tool, and every number in them
+  came from the tool results (`tools` 7/7, `grounded` 7/7).
+* **Free-tier quota:** `gemini-3-flash` allows 20 requests a day, about 9 questions. The
+  runner now saves each answer as it comes and stops after 3 errors in a row.
 
 ## Testing without an API key
 

@@ -20,8 +20,8 @@ import re
 
 TOL_DEFAULT = 1.0
 
-# A quantity with a unit: "61 %", "158 kWh", "0,12 €", "12 Cent", "16,9 kg".
-_UNIT = r"(kWh|kW|%|Prozent|percent|€|EUR|Euro|Cent|ct|kg)"
+# A quantity with a unit: "61 %", "158 kWh", "250 kWp", "0,12 €", "12 Cent", "16,9 kg".
+_UNIT = r"(kWh|kWp|kW|%|Prozent|percent|€|EUR|Euro|Cent|ct|kg)"
 _NUM = r"(\d+(?:[.,]\d+)?)"
 _QTY_AFTER = re.compile(_NUM + r"\s*" + _UNIT + r"(?![A-Za-z])", re.IGNORECASE)
 _QTY_BEFORE = re.compile(r"(€|EUR)\s*" + _NUM, re.IGNORECASE)

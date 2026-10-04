@@ -74,7 +74,7 @@ def snapshot(api_url):
 
 
 def preflight(args):
-    """Stop at once, with the fix, when nothing could be answered (instead of 19 errors)."""
+    """Stop at once, with the fix, when nothing could be answered (instead of an error per case)."""
     try:
         http_json(f"{args.api_url}/api/site", timeout=10)
     except Exception as e:
@@ -87,6 +87,11 @@ def preflight(args):
                      "the model credential, and click Publish.")
     except urllib.error.URLError as e:
         sys.exit(f"Can't reach n8n at {args.chat_url} ({e.reason}). Start it: docker compose up -d")
+
+
+def append(path, record):
+    with open(path, "a") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def wilson(passed, n, z=1.96):
@@ -172,19 +177,29 @@ def main():
     out_dir.mkdir(parents=True)
 
     rows, errors = [], []
+    results, failures = out_dir / "results.jsonl", out_dir / "errors.jsonl"
+    results.touch(), failures.touch()
+    in_a_row = 0
     for rep in range(1, args.reps + 1):
         for case in cases:
             try:
                 row = run_trial(case, rep, args, run_id)
                 rows.append(row)
+                append(results, row)                   # saved as it comes: Ctrl+C loses nothing
+                in_a_row = 0
                 print(f"{'PASS' if row['passed'] else 'FAIL'}  {case['id']}  (rep {rep}, {row['latency_s']} s)")
             except InfraError as e:
                 errors.append({"case": case["id"], "rep": rep, "error": str(e)})
+                append(failures, errors[-1])
+                in_a_row += 1
                 print(f"ERROR {case['id']}  (rep {rep}): {e}")
+                if in_a_row == 3:                      # e.g. a used-up daily quota: the rest would fail too
+                    print("\nStopped: 3 errors in a row. Check the n8n execution log (or the model's quota).")
+                    break
             time.sleep(args.pause)
+        if in_a_row == 3:
+            break
 
-    (out_dir / "results.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    (out_dir / "errors.jsonl").write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in errors))
     summary = summarize(rows, errors, len(cases))
     (out_dir / "summary.md").write_text(summary + "\n")
     print("\n" + summary + f"\n\nSaved to {out_dir.relative_to(HERE.parent.parent)}")

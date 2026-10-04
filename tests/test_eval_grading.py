@@ -21,7 +21,7 @@ SNAPSHOT = {
     "plan": {"summary": {"buy_tonight_kwh": 158, "fullest_battery_pct": 95, "fullest_at": "17:00"},
              "hours": [{"label": "23:00", "battery_pct": 70.0}, {"label": "00:00", "battery_pct": 66.0}]},
     "savings": {"saved_eur": 63.09, "projected_full_month_eur": 455.24, "co2_avoided_kg": 16.9},
-    "site": {"battery_kwh": 200.0, "reserve_pct": 20, "cheap_price": 0.12, "peak_price": 0.28},
+    "site": {"solar_kwp": 250.0, "battery_kwh": 200.0, "reserve_pct": 20, "cheap_price": 0.12, "peak_price": 0.28},
 }
 LIVE_OBS = [json.dumps(SNAPSHOT["live"])]
 SAVINGS_OBS = [json.dumps(SNAPSHOT["savings"])]
@@ -51,6 +51,10 @@ class TestKnownGoodAnswersPass:
         snapshot["plan"]["summary"]["buy_tonight_kwh"] = 0
         checks = grading.grade(CASE["plan-tonight-de"], "Nein, heute Nacht kauft sie keinen Netzstrom.",
                                ["get_plan"], [json.dumps(snapshot["plan"])], snapshot)
+        assert all(checks.values()), checks
+
+    def test_array_size_in_kwp(self):
+        checks = grade("site-array-en", "Our solar array is 250 kWp.", ["get_site"], [json.dumps(SNAPSHOT["site"])])
         assert all(checks.values()), checks
 
     def test_a_polite_refusal_of_an_off_topic_question(self):
@@ -85,6 +89,18 @@ class TestKnownBadAnswersFail:
         checks = grade("live-battery-de", "The battery is 61 % full right now.", ["get_live"], LIVE_OBS)
         assert checks["language"] is False
 
+    def test_german_answer_to_an_english_question(self):
+        # Found by the first real run (Gemini): English questions got German answers.
+        a = "Nein, wir beziehen momentan keinen Strom aus dem Netz, wir speisen 20 kW ein."
+        checks = grade("live-grid-en", a, ["get_live"], LIVE_OBS)
+        assert checks["language"] is False
+
+    def test_peak_output_mistaken_for_the_array_size(self):
+        # Found by reading the first real run: "the 155 kWp plant" (155 kW is the clear-day peak).
+        a = "The array is 155 kWp."
+        live_and_site = [json.dumps({**SNAPSHOT["live"], "solar_peak_kw": 155.0}), json.dumps(SNAPSHOT["site"])]
+        assert grade("site-array-en", a, ["get_site"], live_and_site)["number:site.solar_kwp"] is False
+
     def test_empty_answer_is_never_a_pass(self):
         assert grade("live-battery-de", "   ", ["get_live"], LIVE_OBS) == {"answered": False}
 
@@ -115,6 +131,7 @@ class TestParsing:
     @pytest.mark.parametrize("text, values", [
         ("61 %", [61.0]), ("63,09 €", [63.09]), ("€0.12", [0.12]), ("12 Cent", [0.12]),
         ("158 kWh at 50 kW", [158.0, 50.0]), ("um 03:00 Uhr", []), ("16,9 kg CO2", [16.9]),
+        ("250 kWp", [250.0]),
     ])
     def test_quantities(self, text, values):
         assert grading.quantities(text) == pytest.approx(values)
