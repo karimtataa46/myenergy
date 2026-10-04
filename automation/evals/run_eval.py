@@ -4,10 +4,11 @@ Runs the eval set against the live "Frag deine Anlage" agent in n8n and prints a
     python3 automation/evals/run_eval.py              # every case once
     python3 automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
     python3 automation/evals/run_eval.py --only scope # cases tagged "scope" (or one case id)
+    python3 automation/evals/run_eval.py --pause 15   # on Gemini's free tier (per-minute limit)
 
-Needs `docker compose up` and the chat workflow published in n8n with your Anthropic
-credential. Each run calls Claude (about 2 calls per question), so it costs money:
-check the usage page in the Anthropic Console after your first run.
+Needs `docker compose up` and the chat workflow published in n8n with a model
+credential. Each question makes about 2 model calls: on a free tier that counts
+against the daily limit, on a paid plan it costs money.
 
 Writes automation/evals/results/<time>/: results.jsonl (one graded row per trial),
 errors.jsonl (trials that never produced an answer, kept out of the score) and summary.md.
@@ -85,6 +86,7 @@ def run_trial(case, rep, args, run_id):
     session = f"eval-{run_id}-{case['id']}-{rep}"
     for turn in case.get("turns", []):                 # earlier turns of a conversation
         ask(args.chat_url, session, turn, args.timeout)
+        time.sleep(args.pause)
     truth = snapshot(args.api_url)
     body, latency, attempts = ask(args.chat_url, session, case["question"], args.timeout)
     answer, tools, observations = grading.parse_agent_reply(body)
@@ -140,6 +142,8 @@ def main():
     p.add_argument("--chat-url", default=default_chat_url())
     p.add_argument("--api-url", default="http://localhost:8000")
     p.add_argument("--timeout", type=int, default=120, help="seconds per question")
+    p.add_argument("--pause", type=float, default=0,
+                   help="seconds to wait between questions (stay under a free tier's per-minute limit)")
     p.add_argument("--min-pass-rate", type=float, help="exit 1 below this (0 to 1), for CI")
     args = p.parse_args()
 
@@ -160,6 +164,7 @@ def main():
             except InfraError as e:
                 errors.append({"case": case["id"], "rep": rep, "error": str(e)})
                 print(f"ERROR {case['id']}  (rep {rep}): {e}")
+            time.sleep(args.pause)
 
     (out_dir / "results.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
     (out_dir / "errors.jsonl").write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in errors))

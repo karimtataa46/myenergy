@@ -1,36 +1,40 @@
-# AI agents for myEnergy (n8n + Claude)
+# AI agents for myEnergy (n8n + LLM)
 
 Two n8n workflows that put a language model on top of the myEnergy API, and an
-evaluation that checks the model's answers against the plant's real numbers.
+evaluation that checks the model's answers against the plant's real numbers. The model is
+Google Gemini (free tier); the design does not depend on it, and switching to Claude is one
+node (see below).
 
 | Part | What it does | File |
 |------|--------------|------|
-| **Frag deine Anlage** | A chat agent. The operator asks in German or English ("Kauft die Anlage heute Nacht Strom?") and Claude answers by calling the myEnergy API as tools. | `workflows/chat-agent.json` |
-| **Daily briefing** | Every morning at 06:30 Claude writes a short German briefing about today and tonight, saved as a Markdown file. | `workflows/daily-briefing.json` |
+| **Frag deine Anlage** | A chat agent. The operator asks in German or English ("Kauft die Anlage heute Nacht Strom?") and the model answers by calling the myEnergy API as tools. | `workflows/chat-agent.json` |
+| **Daily briefing** | Every morning at 06:30 the model writes a short German briefing about today and tonight, saved as a Markdown file. | `workflows/daily-briefing.json` |
 | **Evaluation** | One command asks the agent 19 questions and grades each answer against the API at that moment. | `evals/` |
 
 ```
 operator ── chat ──▶ n8n: AI Agent ── tools (HTTP GET) ──▶ myEnergy API
-                     Claude + memory                         /api/live  /api/plan
+                     Gemini + memory                         /api/live  /api/plan
                                                              /api/savings  /api/site
 
 06:30 or GET /webhook/briefing ──▶ n8n: fetch plan, live, savings ──▶ code collects the facts
-                                   ──▶ Claude writes ──▶ briefings/2026-10-04.md
+                                   ──▶ Gemini writes ──▶ briefings/2026-10-04.md
 ```
 
 ## Set it up
 
 1. Start everything: `docker compose up -d` (from the repository root). myEnergy runs on
-   http://localhost:8000, n8n on http://localhost:5678. Inside Docker, n8n reaches the API
-   at `http://myenergy:8000` (the `MYENERGY_URL` variable in `docker-compose.yml`).
+   http://localhost:8000, n8n on http://localhost:5678 (reachable only from this computer).
+   Inside Docker, n8n reaches the API at `http://myenergy:8000` (the `MYENERGY_URL` variable
+   in `docker-compose.yml`).
 2. Open http://localhost:5678 and create the n8n owner account. It is local to your machine.
-3. Create an API key in the Anthropic Console (console.anthropic.com, API keys).
-   In n8n: **Credentials, Add credential, Anthropic**, paste the key, save. The key stays
-   encrypted inside n8n's data volume; it is never in this repository.
+3. Create a Gemini API key in Google AI Studio (aistudio.google.com, Get API key).
+   In n8n: **Credentials, Add credential, Google Gemini (PaLM) API**, paste the key, save.
+   The key stays encrypted inside n8n's data volume; it is never in this repository.
 4. Load the workflows (only needed if they are not there yet, or after you change the JSON):
    `docker compose exec n8n n8n import:workflow --separate --input=/workflows/`
-5. Open each workflow, click its **Claude** node and pick your Anthropic credential. Save,
-   then **Publish** the workflow.
+5. Open each workflow, double-click its **Gemini** node and pick your credential. Save.
+   To try the agent right away, click **Open chat** at the bottom of the canvas.
+   Then **Publish** the workflow.
 6. Use them:
    * Chat: http://localhost:5678/webhook/f3a1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/chat
    * Briefing on demand: http://localhost:5678/webhook/briefing (it also runs every day at 06:30)
@@ -42,7 +46,7 @@ change is versioned:
 
 ## The chat agent
 
-An **AI Agent** node with Claude as the model, a short memory (the last 5 exchanges of each
+An **AI Agent** node with a language model, a short memory (the last 5 exchanges of each
 chat), and four read-only tools. Each tool is an HTTP Request node that calls one endpoint.
 
 | Tool | Endpoint | Used for |
@@ -73,18 +77,30 @@ The full prompt is the `systemMessage` in `workflows/chat-agent.json`.
 
 ### Model settings
 
-Claude Opus 5.5 (`claude-opus-5-5`) with adaptive thinking at effort **low** (short
-questions; raise it if the evaluation shows mistakes), and prompt caching for 5 minutes, so
-the prompt and tool definitions are not paid in full on the second and third call within
-one question. No temperature is set: current Claude models reject sampling parameters.
+Gemini 3 Flash (`models/gemini-3-flash-preview`, the default of n8n's Gemini node) with no
+temperature and no output limit set: Gemini 3 works best on its defaults, and its thinking
+counts toward the output limit, so a small limit can cut an answer off. If your key has no
+access to this model, pick another one from the node's model list.
+
+The free tier has per-minute and per-day request limits (see Google AI Studio), and Google
+may use free-tier prompts to improve its products. That is fine for this simulated plant;
+for a real company's data you would use a paid plan.
+
+### Switching to Claude
+
+Replace the **Gemini** node with n8n's **Anthropic Chat Model** node, connected to the AI
+Agent the same way. Settings that work with Claude Opus 5.5 (`claude-opus-5-5`): thinking
+mode adaptive, effort low, prompt caching 5 minutes, and no temperature (current Claude
+models reject sampling parameters). `tests/test_workflows.py` checks these if a Claude node
+is present. Then compare both models with the evaluation below.
 
 ## The daily briefing
 
 This one is deliberately **not** an agent. The data it needs is always the same, so the
 workflow fetches it in a fixed order, a Code node computes every number the briefing may use
-(solar expected in the next 24 hours, the sunniest hour), and Claude only writes the text.
-Code computes, the model writes: cheaper, more predictable, and easier to test than letting
-a model decide what to fetch.
+(solar expected in the next 24 hours, the sunniest hour), and the model only writes the
+text. Code computes, the model writes: cheaper, more predictable, and easier to test than
+letting a model decide what to fetch.
 
 It runs every day at 06:30 (Europe/Berlin) and on demand at `GET /webhook/briefing`, which
 returns `{date, briefing, saved_to}`. The file goes to `automation/briefings/YYYY-MM-DD.md`.
@@ -93,10 +109,13 @@ To send it by email or to Microsoft Teams, add that node after the **Briefing** 
 ## Evaluating the agent
 
 ```bash
-python3 automation/evals/run_eval.py              # 19 questions, once each
+python3 automation/evals/run_eval.py --pause 15   # 19 questions, once each (free tier)
 python3 automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
 python3 automation/evals/run_eval.py --only scope # one tag or one case id
 ```
+
+`--pause` waits between questions so a run stays under the free tier's per-minute limit
+(each question is about 2 model calls). A full run is about 40 calls.
 
 For each question the runner opens a fresh chat session, reads the API (the truth at that
 moment), asks the agent, and grades the answer on separate checks:
@@ -113,12 +132,8 @@ moment), asks the agent, and grades the answer on separate checks:
 The cases cover both directions: questions it must answer with data (live, plan, savings,
 site, a two-turn follow-up) and requests it must decline (football, "switch on the heater",
 next week's weather). Results go to `automation/evals/results/<time>/`: `results.jsonl`
-(every answer and its checks), `errors.jsonl` (trials that never produced an answer, kept
-out of the score) and `summary.md`.
-
-**Cost:** about $0.03 per question with Claude Opus 5.5, so a full run is roughly $0.50 to
-$1.50 and the briefing about $0.02 a day. These are estimates from token counts; check the
-usage page in the Anthropic Console after your first run.
+(every answer and its checks), `errors.jsonl` (trials that never produced an answer, such
+as a rate-limit error, kept out of the score) and `summary.md`.
 
 ### How the evaluation itself is tested
 
@@ -133,7 +148,8 @@ An evaluation can be wrong too, so it is tested before its numbers are trusted:
 * A null baseline: a fake model that always dumps raw tool output scores 0 of 19.
 * When the model call fails, the trial lands in `errors.jsonl`, not in the score.
 * `tests/test_workflows.py` checks that every tool calls an endpoint that exists, that the
-  prompt names every tool, and that no key is committed. Both run in CI without a key.
+  prompt names every tool, the model settings, and that no key is committed. Both run in CI
+  without a key.
 
 ### Limitations
 
@@ -150,14 +166,15 @@ An evaluation can be wrong too, so it is tested before its numbers are trusted:
 | Date | Setup | Pass rate |
 |------|-------|-----------|
 | 2026-10-04 | Null baseline (fake model that dumps raw tool output) | 0/19 |
-| | Claude Opus 5.5, effort low | not run yet |
+| | Gemini 3 Flash | not run yet |
 
 ## Testing without an API key
 
-`dev/fake_anthropic.py` is a fake Anthropic API: it logs every request n8n sends and replies
-with a script (call `get_plan`, then answer). It proves the wiring, trigger to agent to tool
-to API to reply, and shows the exact request Claude would get. Start it on the Compose
-network, then point an Anthropic credential in n8n at it (any key, Base URL
+`dev/fake_anthropic.py` is a fake model API in Anthropic's format: it logs every request
+n8n sends and replies with a script (call `get_plan`, then answer). It was used to prove the
+wiring, trigger to agent to tool to API to reply, before any key existed. To use it, swap in
+an Anthropic Chat Model node (see "Switching to Claude"), start the fake on the Compose
+network, and point an Anthropic credential at it (any key, Base URL
 `http://fake-anthropic:9100`):
 
 ```bash
@@ -165,5 +182,5 @@ docker run -d --name fake-anthropic --network myenergy_default \
   -v "$PWD/automation/dev:/app" -w /app python:3.11-slim python fake_anthropic.py
 ```
 
-The requests are logged to `automation/dev/requests.jsonl`. Switch the credential back to
-your real one afterwards, and remove the fake with `docker rm -f fake-anthropic`.
+The requests are logged to `automation/dev/requests.jsonl`. Remove the fake afterwards with
+`docker rm -f fake-anthropic`.

@@ -122,25 +122,16 @@
     },
     {
       "id": "7c2e9b1a-8d4f-4e3a-b6c5-1f0a9d8e7c08",
-      "name": "Claude",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.6,
+      "name": "Gemini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
       "position": [
         1060,
         320
       ],
       "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "claude-opus-5-5",
-          "cachedResultName": "Claude Opus 5.5"
-        },
-        "options": {
-          "maxTokensToSample": 16000,
-          "thinkingMode": "adaptive",
-          "effort": "low"
-        }
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
       }
     },
     {
@@ -364,7 +355,7 @@
         ]
       ]
     },
-    "Claude": {
+    "Gemini": {
       "ai_languageModel": [
         [
           {

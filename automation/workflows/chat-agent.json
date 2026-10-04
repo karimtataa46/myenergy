@@ -48,26 +48,16 @@
     },
     {
       "id": "4b0f6f0e-3c1d-4a7e-9a51-0c6d2f1a9e03",
-      "name": "Claude",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.6,
+      "name": "Gemini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
       "position": [
         100,
         260
       ],
       "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "claude-opus-5-5",
-          "cachedResultName": "Claude Opus 5.5"
-        },
-        "options": {
-          "maxTokensToSample": 16000,
-          "thinkingMode": "adaptive",
-          "effort": "low",
-          "promptCaching": "5m"
-        }
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
       }
     },
     {
@@ -161,17 +151,6 @@
         ]
       ]
     },
-    "Claude": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Memory": {
       "ai_memory": [
         [
@@ -222,6 +201,17 @@
           {
             "node": "AI Agent",
             "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]

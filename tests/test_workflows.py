@@ -3,8 +3,8 @@ Static checks on the n8n workflows in automation/workflows/.
 
 The workflows are code that n8n runs, so they get tests like any other code. These
 catch drift between the agents and the API (a renamed endpoint, a tool the prompt
-no longer mentions) and settings the current Claude models reject, without
-starting n8n or calling a model.
+no longer mentions) and model settings that break answers, without starting n8n
+or calling a model.
 """
 import json
 import re
@@ -65,14 +65,21 @@ class TestEveryWorkflow:
         text = path.read_text()
         assert "sk-ant" not in text and '"apiKey"' not in text
 
-    def test_claude_settings_the_current_models_accept(self, path):
+    def test_exactly_one_language_model(self, path):
+        models = [n for n in load(path)["nodes"] if n["type"].split(".")[-1].startswith("lmChat")]
+        assert len(models) == 1, [n["name"] for n in models]
+
+    def test_model_settings_the_model_accepts(self, path):
         for n in load(path)["nodes"]:
-            if n["type"].endswith("lmChatAnthropic"):
-                opts = n["parameters"]["options"]
+            opts = n.get("parameters", {}).get("options", {})
+            if n["type"].endswith("lmChatGoogleGemini"):
+                assert n["parameters"]["modelName"].startswith("models/gemini-")
+                # thinking counts toward the limit, so a small one cuts answers off
+                assert opts.get("maxOutputTokens", 8192) >= 8192
+            if n["type"].endswith("lmChatAnthropic"):                      # if switched back to Claude
                 assert n["parameters"]["model"]["value"].startswith("claude-")
                 assert not {"temperature", "topK", "topP"} & opts.keys()   # rejected by Opus 5.5
-                assert opts.get("thinkingMode") != "disabled"              # also rejected
-                assert opts.get("thinkingMode") != "manual"
+                assert opts.get("thinkingMode") not in ("disabled", "manual")
 
 
 class TestChatAgent:
@@ -86,7 +93,8 @@ class TestChatAgent:
         prompt = system["parameters"]["options"]["systemMessage"]
         for name, node in self.tools().items():
             assert name in prompt, name
-            assert node["parameters"]["descriptionType"] == "manual"
+            # n8n drops "manual" when it saves (it's the default once a description exists)
+            assert node["parameters"].get("descriptionType") != "auto"
             assert len(node["parameters"]["toolDescription"]) > 100, name
 
     def test_the_eval_only_expects_tools_the_agent_has(self):

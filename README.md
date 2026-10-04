@@ -35,10 +35,10 @@ All times are in the plant's local time. The simulated plant behind it is a
 development tool: it lets the test suite prove the system works, and is not part
 of the user's interface.
 
-### AI agents (n8n + Claude)
+### AI agents (n8n + LLM)
 
-On top of the API run two n8n workflows with Claude as the language model
-(details in [automation/README.md](automation/README.md)):
+On top of the API run two n8n workflows with a language model, Google Gemini (Claude
+works too; details in [automation/README.md](automation/README.md)):
 
 * **Frag deine Anlage**: a chat agent that answers the operator's questions in German or
   English by calling the myEnergy API as tools, with a system prompt that only allows
@@ -68,7 +68,7 @@ simulation/        the validated, tested core
   optimizer.py       Model Predictive Control via linear programming (SciPy)
   controllers.py     reactive and predictive controllers
   test_*.py          the test suites
-automation/        AI agents on top of the API (n8n + Claude)
+automation/        AI agents on top of the API (n8n + LLM)
   workflows/         the n8n workflows, versioned as JSON
   evals/             the agent's evaluation set and runner
 ```
@@ -145,7 +145,7 @@ pytest -m "not e2e"                      # skip the slow browser tests
 Python, FastAPI, Docker and Docker Compose, SciPy (linear programming), SQLite, Open-Meteo,
 vanilla JavaScript.
 
-**AI and automation:** n8n (AI Agent, tools, memory, scheduled workflows), Claude API,
+**AI and automation:** n8n (AI Agent, tools, memory, scheduled workflows), Google Gemini API,
 prompt engineering, LLM evaluation.
 
 **Testing and CI:** pytest, pytest-cov, FastAPI TestClient, Playwright, GitHub Actions.
