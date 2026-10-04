@@ -81,3 +81,61 @@ def test_when_the_plant_is_unreachable_it_says_so_and_keeps_the_last_plan(page, 
     page.evaluate("Promise.all([loadLive(), loadPlan()])")
     expect(page.locator("#status-text")).to_have_text("Can't reach the plant", timeout=10000)
     expect(page.locator("#plan-body")).to_be_visible()     # the last plan stays on screen
+
+
+# ── Ask your plant: the AI assistant ──────────────────────────────────────────
+# The agent is faked inside the running server, so no model is called.
+
+@pytest.fixture
+def fake_agent(monkeypatch):
+    import assistant
+    import main
+    replies = []
+    monkeypatch.setattr(assistant, "AGENT_URL", "http://agent.test/chat")
+    monkeypatch.setattr(assistant, "available", lambda: True)
+    monkeypatch.setattr(assistant, "_post", lambda payload: replies.pop(0)())
+    monkeypatch.setattr(main, "ask_limiter", assistant.RateLimiter())
+    return replies
+
+
+@pytest.mark.e2e
+def test_the_assistant_stays_hidden_when_it_is_not_running(page, live_server):
+    page.goto(live_server + "/")
+    expect(page.locator("#status-text")).to_have_text("Running normally", timeout=15000)
+    expect(page.locator("#ask-open")).to_be_hidden()
+
+
+@pytest.mark.e2e
+def test_asking_the_plant_a_question(page, live_server, fake_agent):
+    fake_agent += [lambda: {"output": "Die Batterie ist zu 61 % voll."},
+                   lambda: {"output": '<img src=x onerror="window.hacked=1"> stays text'}]
+    page.goto(live_server + "/")
+    page.locator("#ask-open").click(timeout=15000)
+    page.get_by_role("button", name="Wie voll ist die Batterie gerade?").click()
+    expect(page.locator(".msg.me").last).to_have_text("Wie voll ist die Batterie gerade?")
+    expect(page.locator(".msg.bot").last).to_have_text("Die Batterie ist zu 61 % voll.")
+
+    # The answer is model output: it must be shown as text, never run as HTML.
+    page.locator("#ask-input").fill("Und morgen?")
+    page.locator("#ask-input").press("Enter")
+    expect(page.locator(".msg.bot").last).to_contain_text('<img src=x onerror="window.hacked=1">')
+    assert page.evaluate("window.hacked") is None
+
+    page.keyboard.press("Escape")
+    expect(page.locator("#ask-panel")).to_be_hidden()
+    expect(page.locator("#ask-open")).to_be_visible()
+
+
+@pytest.mark.e2e
+def test_when_the_assistant_fails_the_operator_reads_why(page, live_server, fake_agent):
+    import urllib.error
+
+    def n8n_down():
+        raise urllib.error.URLError("connection refused")
+    fake_agent.append(n8n_down)
+    page.goto(live_server + "/")
+    page.locator("#ask-open").click(timeout=15000)
+    page.locator("#ask-input").fill("Wie voll ist die Batterie?")
+    page.locator("#ask-send").click()
+    expect(page.locator(".msg.bot.err")).to_contain_text("can't answer right now")
+    expect(page.locator("#ask-send")).to_be_enabled()      # the operator can simply ask again

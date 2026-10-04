@@ -59,6 +59,30 @@ chat), and four read-only tools. Each tool is an HTTP Request node that calls on
 The model picks tools by their descriptions, so each description explains the fields and
 their units (for example that `battery_kw` is positive while charging).
 
+### In the website: "Ask your plant"
+
+The operator interface has an **Ask your plant** button in the corner. It opens a chat panel
+that talks to the agent, but the browser never talks to n8n directly:
+
+```
+browser ── POST /api/ask ──▶ myEnergy (backend/assistant.py) ── AGENT_URL ──▶ n8n chat agent
+```
+
+* **n8n stays private.** Only myEnergy reaches it, inside Docker (`AGENT_URL` in
+  `docker-compose.yml`).
+* **Limits in one place.** At most 5 questions a minute per visitor and 500 characters per
+  question, because every question uses model quota.
+* **Failures become plain messages.** A timeout, n8n being down, or a used-up quota shows
+  "The assistant can't answer right now" instead of an error.
+* **Hidden when it can't work.** `GET /api/assistant` says whether the agent is reachable
+  (checked at most every 30 seconds, without a model call). Without `AGENT_URL`, as on the
+  public demo, the button never appears.
+* **Safe display.** The answer is model output, so the page shows it as text, never as HTML.
+
+Tested in `tests/test_assistant.py` (API, with a fake agent) and `tests/test_e2e.py` (a real
+browser: hidden without an agent, a question and its answer, HTML in an answer stays text,
+a failure shows a message).
+
 ### The system prompt, and why each rule is there
 
 The full prompt is the `systemMessage` in `workflows/chat-agent.json`.

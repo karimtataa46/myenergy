@@ -30,6 +30,7 @@ the operator's questions, in order:
 | **Tonight and tomorrow** | What will it do, and why? The plan's story, the grid energy bought tonight, the free solar stored, and the hour-by-hour timeline. |
 | **Savings** | What is it saving? This month, the projected month and CO2 avoided, estimated against a plain controller on the same hardware. |
 | **Your system** | What is my plant? Location, solar and battery size, reserve, prices and the devices it controls. |
+| **Ask your plant** | Anything else, in their own words. A corner button opens a chat with the AI assistant (below), which answers from the live data. It only appears when the assistant is running. |
 
 All times are in the plant's local time. The simulated plant behind it is a
 development tool: it lets the test suite prove the system works, and is not part
@@ -126,7 +127,7 @@ live). It covers the full test pyramid:
 | **E2E** | the operator interface in a real headless browser | Playwright |
 | **AI agents** | the n8n workflows match the API, and the eval's grader passes good answers and fails bad ones | pytest |
 
-**252 automated checks** (201 pytest, plus 39 engine and 12 optimiser proofs), with a
+**283 automated checks** (232 pytest, plus 39 engine and 12 optimiser proofs), with a
 coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
 guarded by a regression test, and recorded in the [defect log](docs/BUGS.md).
 
