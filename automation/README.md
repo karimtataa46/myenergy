@@ -93,9 +93,9 @@ To send it by email or to Microsoft Teams, add that node after the **Briefing** 
 ## Evaluating the agent
 
 ```bash
-python automation/evals/run_eval.py              # 19 questions, once each
-python automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
-python automation/evals/run_eval.py --only scope # one tag or one case id
+python3 automation/evals/run_eval.py              # 19 questions, once each
+python3 automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
+python3 automation/evals/run_eval.py --only scope # one tag or one case id
 ```
 
 For each question the runner opens a fresh chat session, reads the API (the truth at that

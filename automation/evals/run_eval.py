@@ -1,9 +1,9 @@
 """
 Runs the eval set against the live "Frag deine Anlage" agent in n8n and prints a pass rate.
 
-    python automation/evals/run_eval.py              # every case once
-    python automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
-    python automation/evals/run_eval.py --only scope # cases tagged "scope" (or one case id)
+    python3 automation/evals/run_eval.py              # every case once
+    python3 automation/evals/run_eval.py --reps 2     # twice, for a tighter error bar
+    python3 automation/evals/run_eval.py --only scope # cases tagged "scope" (or one case id)
 
 Needs `docker compose up` and the chat workflow published in n8n with your Anthropic
 credential. Each run calls Claude (about 2 calls per question), so it costs money:
