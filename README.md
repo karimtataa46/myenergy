@@ -10,10 +10,24 @@ reactive controller, it is predictive: it reads the weather and price forecast a
 plans ahead, so it stores cheap energy before an expensive peak instead of reacting
 once the peak has already arrived.
 
-On a simulated mid-sized factory it cuts the electricity bill by roughly €740 per
-month compared with a standard reactive controller running the exact same hardware,
-and by more under dynamic (spot) pricing, where the optimiser pulls further ahead of
-any hand written rules.
+**What it saves, honestly.** On a simulated mid-sized factory (250 kWp solar, 200 kWh
+battery, day/night tariff), one month breaks down like this:
+
+| Layer | Saves per month |
+|-------|-----------------|
+| Solar panels | about €7,100 |
+| Battery on a simple timer (store solar, charge at the cheap night rate) | about €1,080 |
+| **myEnergy's planning**, with a forecast about 15% off | **about €40** (€110 with a perfect forecast) |
+
+The panels and the night tariff save money with any controller, so only the last line
+is the software's. On a fixed day/night tariff a timer already gets most of the
+battery's value; forecast-based planning matters more with hourly (dynamic) prices,
+where the optimiser beats a hand-written rule by about €270 a month in
+`simulation/demo_dynamic_pricing.py`.
+
+An earlier version of this README claimed about €740 a month. That compared the
+software with a controller that never charged at night, and let it see the real future
+weather, so it credited the night tariff and a perfect forecast to the software.
 
 > **Status:** working prototype. The "facility" is a physically realistic simulation,
 > not yet real hardware. The decision engine, the optimiser and the savings maths are
@@ -28,7 +42,7 @@ the operator's questions, in order:
 |---------|---------|
 | **Right now** | Is it working, and what is it doing? One sentence plus solar, consumption, battery and grid, with the current price. A status pill says if there's no forecast or the plant can't be reached. |
 | **Tonight and tomorrow** | What will it do, and why? The plan's story, the grid energy bought tonight, the free solar stored, and the hour-by-hour timeline. |
-| **Savings** | What is it saving? This month, the projected month and CO2 avoided, estimated against a plain controller on the same hardware. |
+| **Savings** | What is it saving, and which part is the software? The bill split into layers: solar panels, battery on a simple timer, and myEnergy's planning, for this month so far and a full month. |
 | **Your system** | What is my plant? Location, solar and battery size, reserve, prices and the devices it controls. |
 | **Ask your plant** | Anything else, in their own words. A corner button opens a chat with the AI assistant (below), which answers from the live data. It only appears when the assistant is running. |
 
@@ -61,13 +75,13 @@ backend/           FastAPI server
   live_sim.py        drives /sim with the LP optimiser
   simulator.py       simulated facility hardware (solar, load, battery)
   weather.py         Open-Meteo forecast (no API key needed)
-  savings.py         month to date savings via the validated engine
+  savings.py         this month's savings, layer by layer, via the validated engine
   database.py        SQLite history
 simulation/        the validated, tested core
   factory.py         facility model, tariffs, price series
   engine.py          energy balance physics
   optimizer.py       Model Predictive Control via linear programming (SciPy)
-  controllers.py     reactive and predictive controllers
+  controllers.py     reactive, timer and predictive controllers
   test_*.py          the test suites
 automation/        AI agents on top of the API (n8n + LLM)
   workflows/         the n8n workflows, versioned as JSON
@@ -77,17 +91,21 @@ automation/        AI agents on top of the API (n8n + LLM)
 ### The decision engine
 
 The decision engine is the product; the simulation just gives it a realistic world to
-act in. Two strategies run on identical hardware, so the difference between them is a
-fair measure of the software's value:
+act in. Strategies run on identical hardware, so the difference between them is a fair
+measure of the software's value:
 
-* **Reactive controller** (the baseline): responds only to the current moment.
+* **Reactive controller**: responds only to the current moment.
+* **Timer** (the fair baseline): also charges the battery every night at the cheap
+  rate, with no forecast.
 * **Predictive optimiser** (Model Predictive Control): each step it solves a linear
   program over a rolling forecast horizon (the cheapest way to charge and discharge
   given the coming solar and prices), applies only the first action, then re solves on
   the next step with fresh data.
 
-Savings are always reported as the gap between smart and plain control of the same
-hardware, never as an absolute number that the solar panels would have produced anyway.
+The software's saving is always reported as the gap between the optimiser and the timer
+on the same hardware, with the optimiser steering by an imperfect forecast
+(`factory.forecast_of`), never as a number the solar panels or the night tariff would
+have produced anyway.
 
 ## Run it with Docker
 
@@ -127,7 +145,7 @@ live). It covers the full test pyramid:
 | **E2E** | the operator interface in a real headless browser | Playwright |
 | **AI agents** | the n8n workflows match the API, and the eval's grader passes good answers and fails bad ones | pytest |
 
-**283 automated checks** (232 pytest, plus 39 engine and 12 optimiser proofs), with a
+**298 automated checks** (247 pytest, plus 39 engine and 12 optimiser proofs), with a
 coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
 guarded by a regression test, and recorded in the [defect log](docs/BUGS.md).
 
