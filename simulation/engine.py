@@ -147,8 +147,15 @@ def simulate(
     controller: Controller,
     start_soc_kwh: float = None,
     cfg=None,
+    forecast: List[F.DayWeather] = None,
 ) -> Totals:
-    """Run the controller across a list of days. Returns accumulated Totals."""
+    """Run the controller across a list of days. Returns accumulated Totals.
+
+    `weather` is what really happens. `forecast` is what the controller is told will
+    happen; without it the controller sees the real future (a perfect forecast,
+    which flatters any forecast-based controller).
+    """
+    forecast = forecast or weather
     if cfg is None:
         cfg = F.DEFAULT_CONFIG
     if start_soc_kwh is None:
@@ -160,11 +167,12 @@ def simulate(
     # ahead over the forecast horizon. Solar and load are built from THIS
     # facility's config (so a bigger array / different load scales correctly).
     all_solar = [cfg.solar_kwh(h, day.cloud_factor) for day in weather for h in range(24)]
+    fc_solar = [cfg.solar_kwh(h, day.cloud_factor) for day in forecast for h in range(24)]
     all_load = [cfg.load_profile_kw[h] for _ in weather for h in range(24)]
     n = len(all_solar)
 
     for d, day in enumerate(weather):
-        tomorrow = weather[d + 1] if d + 1 < len(weather) else day
+        tomorrow = forecast[d + 1] if d + 1 < len(forecast) else forecast[d]
         tomorrow_deficit = sum(
             max(cfg.load_profile_kw[h] - cfg.solar_kwh(h, tomorrow.cloud_factor), 0)
             for h in range(24)
@@ -176,13 +184,13 @@ def simulate(
             load = all_load[t]
 
             # Forecast: average solar over next 3 hours (same day)
-            next_hours = [cfg.solar_kwh(hh, day.cloud_factor)
+            next_hours = [cfg.solar_kwh(hh, forecast[d].cloud_factor)
                           for hh in range(h + 1, min(h + 4, 24))]
             fc_next = sum(next_hours) / len(next_hours) if next_hours else 0.0
 
             # Look-ahead window for the optimal controller (current hour first)
             end = min(t + HORIZON_HOURS, n)
-            window_solar = all_solar[t:end]
+            window_solar = [solar] + fc_solar[t + 1:end]   # this hour is measured, the rest forecast
             window_load = all_load[t:end]
 
             state = StepState(

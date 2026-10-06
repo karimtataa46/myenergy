@@ -21,8 +21,9 @@ import re
 TOL_DEFAULT = 1.0
 
 # A quantity with a unit: "61 %", "158 kWh", "250 kWp", "0,12 €", "12 Cent", "16,9 kg".
-_UNIT = r"(kWh|kWp|kW|%|Prozent|percent|€|EUR|Euro|Cent|ct|kg)"
-_NUM = r"(\d+(?:[.,]\d+)?)"
+_UNIT = r"(kWh|kWp|kW|%|Prozent|percent|€|EUR|Euro|Cent|ct|kg|Tonnen|tonnes|tons|t)"
+# 1.275 (German thousands), 1,275 (English thousands), 1 275, or a plain 61 / 0,12 / 16.9
+_NUM = r"(\d{1,3}(?:[.,\u202f\u00a0 ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
 _QTY_AFTER = re.compile(_NUM + r"\s*" + _UNIT + r"(?![A-Za-z])", re.IGNORECASE)
 _QTY_BEFORE = re.compile(r"(€|EUR)\s*" + _NUM, re.IGNORECASE)
 _ANY_NUM = re.compile(r"-?\d+(?:\.\d+)?")
@@ -38,6 +39,13 @@ _EN = {"the", "and", "is", "not", "right", "now", "today", "tonight", "will", "y
 
 
 def _to_float(s: str) -> float:
+    """'61', '0,12', '16.9', and thousands written either way: '1.275', '1,275', '1 275'."""
+    s = re.sub(r"[\u202f\u00a0 ]", "", s)
+    groups = re.fullmatch(r"\d{1,3}([.,])\d{3}(?:\1\d{3})*(?:([.,])\d+)?", s)
+    if groups and (groups.group(2) or len(s.split(groups.group(1))) > 2 or not s.startswith("0")):
+        decimal = groups.group(2)
+        whole, _, frac = s.rpartition(decimal) if decimal else (s, "", "")
+        return float(whole.replace(".", "").replace(",", "") + ("." + frac if frac else ""))
     return float(s.replace(",", "."))
 
 
@@ -47,7 +55,8 @@ def quantities(text: str) -> list:
     found = []
     for num, unit in _QTY_AFTER.findall(text):
         v = _to_float(num)
-        found.append(v / 100 if unit.lower() in ("cent", "ct") else v)
+        unit = unit.lower()
+        found.append(v / 100 if unit in ("cent", "ct") else v * 1000 if unit in ("t", "tonnen", "tonnes", "tons") else v)
     for _, num in _QTY_BEFORE.findall(text):
         found.append(_to_float(num))
     return found

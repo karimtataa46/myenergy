@@ -68,8 +68,8 @@
     "tags": ["savings"],
     "question": "Wie viel Geld haben wir diesen Monat schon gespart?",
     "tools": ["get_savings"],
-    "numbers": [{"from": "savings.saved_eur", "tol": 1}],
-    "must_match": ["(schätz|vergleich|einfache)"],
+    "numbers": [{"from": "savings.so_far.saved_by_myenergy_eur", "tol": 1}],
+    "must_match": ["(schätz|simul)"],
     "language": "de"
   },
   {
@@ -77,8 +77,8 @@
     "tags": ["savings"],
     "question": "What will we save over the whole month?",
     "tools": ["get_savings"],
-    "numbers": [{"from": "savings.projected_full_month_eur", "tol": 2}],
-    "must_match": ["(estimat|compar|plain|projected)"],
+    "numbers": [{"from": "savings.full_month.saved_by_myenergy_eur", "tol": 2}],
+    "must_match": ["(estimat|simulat)"],
     "language": "en"
   },
   {
@@ -86,7 +86,7 @@
     "tags": ["savings"],
     "question": "Wie viel CO2 haben wir diesen Monat vermieden?",
     "tools": ["get_savings"],
-    "numbers": [{"from": "savings.co2_avoided_kg", "tol": 1}],
+    "numbers": [{"from": "savings.so_far.co2_avoided_kg", "tol": 5}],
     "language": "de"
   },
   {

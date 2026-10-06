@@ -31,6 +31,22 @@ def reactive(s: StepState) -> float:
         return net            # negative -> discharge, engine clamps to available
 
 
+# ── Fair baseline: a simple time-of-use timer ────────────────────────────────
+
+def timer(s: StepState) -> float:
+    """
+    What a cheap timer does, with no forecast: store solar surplus, fill the battery
+    from the grid every night at the cheap rate, use it during the expensive day.
+    Night charging alone earns most of what a smarter controller earns on a
+    day/night tariff, so this is the honest baseline for "what the software adds".
+    """
+    net = s.solar_kwh - s.load_kwh
+    if net > 0 or s.cfg.is_peak(s.hour):
+        return net                                   # store surplus / cover the deficit
+    room = s.cfg.battery_max_soc * s.capacity_kwh - s.soc_kwh
+    return min(max(room, 0.0), s.cfg.battery_max_charge_kw)
+
+
 # ── myEnergy: predictive + tariff-aware ──────────────────────────────────────
 
 # How full we want the battery by the start of the peak window, as a function

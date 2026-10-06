@@ -1,15 +1,27 @@
 """
-Month-to-date savings.
+Where this month's savings come from.
 
-Reuses the SAME validated simulation engine from Test 4 to compute how much
-myEnergy has saved this calendar month so far (days 1 → today), plus the
-projected full-month figure. Because it's the identical engine the tests
-ran, the dashboard number is consistent with the analysis you already saw.
+The plant's bill is built up in layers, each estimated with the same validated
+simulation engine (simulation/engine.py) over a simulated month of weather:
+
+  without anything     the factory buys every kWh from the grid
+  + solar panels       the panels cover part of the load
+  + battery on a timer a cheap timer: store surplus solar, fill the battery every
+                       night at the cheap rate, use it by day (no forecast)
+  + myEnergy           the optimiser the live system runs, steering by a forecast
+                       that is off by about 15% (real forecasts are never perfect)
+
+Only the last layer is what the software adds. The panels and the night-tariff
+trick save money without it, so they are reported separately instead of being
+counted as myEnergy's saving. (An earlier version compared myEnergy with a
+controller that never charged at night, which credited the night tariff to the
+software.)
 """
 
 import sys
 import os
 import calendar
+from dataclasses import replace
 from datetime import datetime, timezone
 from functools import lru_cache
 
@@ -19,42 +31,53 @@ sys.path.insert(0, os.path.abspath(_SIM_DIR))
 
 import factory as F           # noqa: E402
 from engine import simulate   # noqa: E402
-from controllers import reactive, predictive  # noqa: E402
+from controllers import timer  # noqa: E402
+from optimizer import optimal  # noqa: E402
 from simulator import DEMO_CFG                 # noqa: E402  the same plant as the live demo
 
+FORECAST_ERROR = 0.15          # how far off the forecast's daily cloud cover is, on average
 
-def _saving_for_days(days: int) -> dict:
+
+def _idle(state) -> float:
+    return 0.0
+
+
+def layers(days: int, forecast_error: float = FORECAST_ERROR) -> dict:
+    """The bill and what each layer saves over `days` simulated days."""
     days = max(days, 1)
     weather = F.generate_month_weather(days=days, seed=42)
-    base = simulate(weather, reactive, cfg=DEMO_CFG)
-    smart = simulate(weather, predictive, cfg=DEMO_CFG)
-    saving = base.cost_eur - smart.cost_eur
-    co2 = base.co2_kg - smart.co2_kg
+    grid_only = simulate(weather, _idle, cfg=replace(DEMO_CFG, solar_peak_kw=0.0))
+    solar = simulate(weather, _idle, cfg=DEMO_CFG)
+    with_timer = simulate(weather, timer, cfg=DEMO_CFG)
+    myenergy = simulate(weather, optimal, cfg=DEMO_CFG,
+                        forecast=F.forecast_of(weather, error=forecast_error))
+    by_myenergy = with_timer.cost_eur - myenergy.cost_eur
     return {
-        "baseline_cost_eur": round(base.cost_eur, 2),
-        "myenergy_cost_eur": round(smart.cost_eur, 2),
-        "saved_eur": round(saving, 2),
-        "co2_avoided_kg": round(co2, 1),
-        "pct_of_bill": round(saving / base.cost_eur * 100, 1) if base.cost_eur else 0,
+        "bill_without_anything_eur": round(grid_only.cost_eur, 2),
+        "bill_eur": round(myenergy.cost_eur, 2),
+        "saved_by_solar_eur": round(grid_only.cost_eur - solar.cost_eur, 2),
+        "saved_by_battery_timer_eur": round(solar.cost_eur - with_timer.cost_eur, 2),
+        "saved_by_myenergy_eur": round(by_myenergy, 2),
+        "myenergy_pct_of_bill": round(by_myenergy / with_timer.cost_eur * 100, 1) if with_timer.cost_eur else 0,
+        "co2_avoided_kg": round(grid_only.co2_kg - myenergy.co2_kg, 1),
     }
 
 
 @lru_cache(maxsize=64)
 def _cached(days: int) -> tuple:
-    d = _saving_for_days(days)
-    return tuple(d.items())
+    return tuple(layers(days).items())
 
 
 def month_to_date() -> dict:
-    """Savings from the 1st of the current month through today."""
+    """This month so far (days 1 to today) and a full 30-day month, layer by layer."""
     now = datetime.now(timezone.utc)
-    mtd = dict(_cached(now.day))           # day-of-month = days elapsed
-    full = dict(_cached(30))               # projected full month
-
-    mtd["projected_full_month_eur"] = full["saved_eur"]
-    mtd["projected_co2_kg"] = full["co2_avoided_kg"]
-    mtd["days_elapsed"] = now.day
-    # Real length of THIS month (28/29/30/31) so the progress bar is correct.
-    mtd["days_in_month"] = calendar.monthrange(now.year, now.month)[1]
-    mtd["month"] = now.strftime("%B %Y")
-    return mtd
+    return {
+        "month": now.strftime("%B %Y"),
+        "days_elapsed": now.day,
+        # Real length of THIS month (28/29/30/31) so the progress bar is correct.
+        "days_in_month": calendar.monthrange(now.year, now.month)[1],
+        "so_far": dict(_cached(now.day)),
+        "full_month": dict(_cached(30)),
+        "forecast_error_pct": round(FORECAST_ERROR * 100),
+        "weather": "simulated",
+    }
