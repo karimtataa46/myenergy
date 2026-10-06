@@ -29,6 +29,7 @@ import pricing_service
 import energy_manager
 import planner
 import assistant
+import prices as prices_module
 from zoneinfo import ZoneInfo
 from engine import HORIZON_HOURS
 from live_sim import live_sim
@@ -89,6 +90,7 @@ DEMO_CFG = sim_module.DEMO_CFG
 async def lifespan(app: FastAPI):
     database.init_db()
     await _refresh_forecast()
+    await asyncio.to_thread(price_book.refresh)
     asyncio.create_task(_control_loop())
     asyncio.create_task(_forecast_refresh_loop())
     yield
@@ -276,6 +278,11 @@ async def _forecast_refresh_loop():
     while True:
         await asyncio.sleep(FORECAST_REFRESH_MINUTES * 60)
         await _refresh_forecast()
+        await asyncio.to_thread(price_book.refresh)
+
+
+# Real day-ahead market prices (see prices.py), refreshed with the weather.
+price_book = prices_module.PriceBook()
 
 
 async def _refresh_forecast():
@@ -429,6 +436,28 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
                                 [battery.soc_percent] + [x.battery_pct for x in plan.hours[:-1]])
         ],
     }
+
+
+def _prices_response(now: Optional[datetime] = None, hours: int = HORIZON_HOURS) -> dict:
+    """The factory's price for each of the next hours, and where the prices come from."""
+    now = now or datetime.now(timezone.utc)
+    tz = ZoneInfo(sim_module.DEMO_TIMEZONE)
+    return {
+        "source": price_book.source,
+        "fetched_at": price_book.fetched_at.isoformat() if price_book.fetched_at else None,
+        "surcharge_eur_kwh": prices_module.SURCHARGE_EUR_KWH,
+        "hours": [
+            {"time": h.start.isoformat(), "label": h.start.astimezone(tz).strftime("%H:%M"),
+             "market": h.market, "buy": h.buy, "sell": h.sell, "estimated": h.estimated}
+            for h in price_book.next_hours(now, hours)
+        ],
+    }
+
+
+@app.get("/api/prices")
+async def api_prices():
+    """Hourly electricity prices for the next hours (real day-ahead market prices)."""
+    return _prices_response()
 
 
 @app.get("/api/plan")
