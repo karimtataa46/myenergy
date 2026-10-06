@@ -106,11 +106,11 @@
     "language": "en"
   },
   {
-    "id": "site-prices-de",
-    "tags": ["site"],
-    "question": "Wie teuer ist der Strom nachts und tagsüber?",
-    "tools_any": ["get_site", "get_plan"],
-    "numbers": [{"from": "site.cheap_price", "tol": 0.005}, {"from": "site.peak_price", "tol": 0.005}],
+    "id": "plan-cheapest-de",
+    "tags": ["plan"],
+    "question": "Wann ist der Strom in den nächsten 24 Stunden am günstigsten, und was kostet er dann?",
+    "tools": ["get_plan"],
+    "numbers": [{"from": "plan.summary.cheapest_price", "tol": 0.005}],
     "language": "de"
   },
   {

@@ -148,16 +148,32 @@ def _planning_forecast(fc, now) -> Optional[PlanningForecast]:
     hours = [f for f in fc if f.timestamp >= hour0][:HORIZON_HOURS]
     if not hours:
         return None
+    # The price for each of those hours (real day-ahead prices, see prices.py).
+    prices = price_book.next_hours(now, len(hours))
+    if prices:
+        hours = hours[:len(prices)]
     return PlanningForecast(
-        hour=sim_module.site_hour(now),        # the plant's clock drives tariffs + load (#18)
+        hour=sim_module.site_hour(now),        # the plant's clock drives the load (#18)
         solar_kwh=[facility.scale_to_array(f.estimated_solar_kw) for f in hours],
         load_kwh=[facility.expected_load_kw(sim_module.site_hour(f.timestamp)) for f in hours],
+        buy_price=[p.buy for p in prices] if prices else None,
+        sell_price=[p.sell for p in prices] if prices else None,
     )
 
 
 def _tariff_at(now: datetime) -> float:
-    """Grid price right now, on the plant's local clock."""
-    return DEMO_CFG.tariff(sim_module.site_hour(now))
+    """What a kWh from the grid costs right now: the market price plus fees and taxes."""
+    current = price_book.next_hours(now, 1)
+    return current[0].buy if current else DEMO_CFG.tariff(sim_module.site_hour(now))
+
+
+def _price_limits(now: datetime):
+    """(cheap, dear) thresholds for the safety rules: the cheapest and dearest third
+    of the next 24 hours. Falls back to the fixed tariff without prices."""
+    day = [p.buy for p in price_book.next_hours(now, 24)]
+    if not day:
+        return DEMO_CFG.offpeak_tariff, DEMO_CFG.peak_tariff
+    return planner.band_limits(day)
 
 
 async def _control_loop():
@@ -179,6 +195,7 @@ async def _control_loop():
             upcoming = (facility.scale_to_array(weather_module.get_upcoming_solar(fc, from_now_hours=2))
                         if fc else 0.0)
             tariff = _tariff_at(now)
+            cheap_max, dear_min = _price_limits(now)
 
             # 2. Decide: the forecast planner drives the battery, the rules drive
             #    the devices and take over if there's no forecast.
@@ -189,8 +206,8 @@ async def _control_loop():
                 shiftable_devices=system_devices,
                 upcoming_solar_kw=upcoming,
                 current_tariff_eur_kwh=tariff,
-                peak_price_eur_kwh=DEMO_CFG.peak_tariff,
-                offpeak_price_eur_kwh=DEMO_CFG.offpeak_tariff,
+                peak_price_eur_kwh=dear_min,
+                offpeak_price_eur_kwh=cheap_max,
                 demand_target_kw=DEMAND_TARGET_KW,
             ), _planning_forecast(fc, now), DEMO_CFG)
 
@@ -376,11 +393,11 @@ def _site_info() -> dict:
         "battery_kwh": cfg.battery_capacity_kwh,
         "battery_power_kw": cfg.battery_max_charge_kw,
         "reserve_pct": round(BATTERY_RESERVE_SOC),
-        "cheap_price": cfg.offpeak_tariff,
-        "peak_price": cfg.peak_tariff,
-        "feed_in_price": cfg.feed_in_tariff,
-        "cheap_from": f"{cfg.peak_end:02d}:00",      # the cheap rate runs from the end of peak ...
-        "cheap_until": f"{cfg.peak_start:02d}:00",   # ... until peak starts again
+        # Dynamic tariff: the price changes every hour (see /api/prices and the plan).
+        "tariff": "dynamic",
+        "price_source": price_book.source,
+        "surcharge_eur_kwh": prices_module.SURCHARGE_EUR_KWH,    # added to the market price
+        "export_fee_eur_kwh": prices_module.EXPORT_FEE_EUR_KWH,  # taken off it for exports
         "devices": [{"name": d.name, "power_kw": d.power_draw_kw} for d in system_devices],
     }
 
@@ -419,10 +436,15 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
             "buy_without_sun_kwh": round(s.buy_without_sun_kwh),
             "buy_from": fmt(s.buy_first) if s.buy_first is not None else None,
             "buy_until": fmt(s.buy_last + 1) if s.buy_last is not None else None,
-            "buy_price": s.buy_price,
+            "buy_price": round(s.buy_price, 3) if s.buy_price is not None else None,
             "solar_to_battery_kwh": round(s.solar_to_battery_kwh),
             "fullest_battery_pct": round(s.fullest_pct),
             "fullest_at": fmt(s.fullest_offset + 1),
+            "buy_windows": [[fmt(a), fmt(b + 1)] for a, b in s.windows],
+            "cheapest_at": fmt(s.cheapest_offset),
+            "cheapest_price": round(s.cheapest_price, 3),
+            "dearest_at": fmt(s.dearest_offset),
+            "dearest_price": round(s.dearest_price, 3),
         },
         # Every value is anchored to its label: flows are averages over the hour that
         # STARTS at the label, and the battery level is the level AT the label. The
@@ -431,7 +453,7 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
             {"time": start_of(h.offset).isoformat(), "label": fmt(h.offset),
              "solar_kw": round(h.solar_kw, 1), "load_kw": round(h.load_kw, 1),
              "grid_buy_kw": round(h.grid_buy_kw, 1), "battery_pct": round(level, 1),
-             "price": h.price, "cheap": h.cheap}
+             "price": round(h.price, 3), "cheap": h.cheap, "dear": h.dear}
             for h, level in zip(plan.hours,
                                 [battery.soc_percent] + [x.battery_pct for x in plan.hours[:-1]])
         ],

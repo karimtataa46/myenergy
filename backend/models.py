@@ -164,3 +164,7 @@ class PlanningForecast:
     hour: int                  # current hour of day (drives the tariff)
     solar_kwh: List[float]     # expected solar energy per hour
     load_kwh: List[float]      # expected consumption per hour
+    # Hourly prices (EUR/kWh) for a dynamic tariff, current hour first. Without them
+    # the planner uses the config's fixed day/night tariff.
+    buy_price: Optional[List[float]] = None
+    sell_price: Optional[List[float]] = None

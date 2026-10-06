@@ -18,7 +18,8 @@ CASE = {c["id"]: c for c in CASES}
 
 SNAPSHOT = {
     "live": {"battery_soc": 60.6, "solar_kw": 138.7, "grid_import_kw": 0.0, "grid_export_kw": 19.3},
-    "plan": {"summary": {"buy_tonight_kwh": 158, "fullest_battery_pct": 95, "fullest_at": "17:00"},
+    "plan": {"summary": {"buy_tonight_kwh": 158, "fullest_battery_pct": 95, "fullest_at": "17:00",
+                         "cheapest_at": "13:00", "cheapest_price": 0.224},
              "hours": [{"label": "23:00", "battery_pct": 70.0}, {"label": "00:00", "battery_pct": 66.0}]},
     "savings": {"so_far": {"saved_by_solar_eur": 1527.78, "saved_by_battery_timer_eur": 220.82,
                            "saved_by_myenergy_eur": 4.83, "co2_avoided_kg": 1275.3},
@@ -45,8 +46,8 @@ class TestKnownGoodAnswersPass:
         assert all(checks.values()), checks
 
     def test_prices_given_in_cent(self):
-        a = "Nachts kostet der Strom 12 Cent pro kWh, tagsüber 28 Cent."
-        checks = grade("site-prices-de", a, ["get_site"], [json.dumps(SNAPSHOT["site"])])
+        a = "Am günstigsten ist der Strom um 13:00 Uhr mit 22,4 Cent pro kWh."
+        checks = grade("plan-cheapest-de", a, ["get_plan"], [json.dumps(SNAPSHOT["plan"])])
         assert all(checks.values()), checks
 
     def test_nothing_bought_tonight_is_a_valid_no(self):
@@ -128,9 +129,9 @@ class TestKnownBadAnswersFail:
         assert not all(grade("savings-month-de", a, ["get_savings"], SAVINGS_OBS).values())
 
     def test_a_price_off_by_cents(self):
-        a = "Nachts kostet der Strom 0,15 € pro kWh, tagsüber 0,28 €."
-        checks = grade("site-prices-de", a, ["get_site"], [json.dumps(SNAPSHOT["site"])])
-        assert checks["number:site.cheap_price"] is False
+        a = "Am günstigsten ist der Strom um 13:00 Uhr mit 0,25 € pro kWh."
+        checks = grade("plan-cheapest-de", a, ["get_plan"], [json.dumps(SNAPSHOT["plan"])])
+        assert checks["number:plan.summary.cheapest_price"] is False
         assert checks["grounded"] is False
 
 
