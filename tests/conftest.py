@@ -75,10 +75,30 @@ def fake_place():
                                  country_code="DE", latitude=48.14, longitude=11.58)
 
 
+def fake_market(first, last):
+    """Day-ahead prices for whole local days: morning and evening peaks, a midday dip."""
+    import math
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    out, day = [], first
+    while day <= last:
+        midnight = datetime(day.year, day.month, day.day, tzinfo=ZoneInfo("Europe/Berlin"))
+        for h in range(24):
+            price = (0.08 + 0.10 * math.exp(-((h - 8) ** 2) / 4) + 0.16 * math.exp(-((h - 19) ** 2) / 6)
+                     - (0.05 if 11 <= h <= 15 else 0.0))
+            out.append(((midnight + timedelta(hours=h)).astimezone(timezone.utc), round(price, 4)))
+        day += timedelta(days=1)
+    return out
+
+
 @pytest.fixture
 def mock_network(monkeypatch, fake_place):
     import weather
     import pricing_service
+    import prices
+
+    # day-ahead prices -> a fixed daily shape instead of the Energy-Charts API
+    monkeypatch.setattr(prices, "fetch_market", fake_market)
 
     # forecast -> the offline clear-sky model instead of a real HTTP call
     monkeypatch.setattr(weather, "fetch_forecast",
