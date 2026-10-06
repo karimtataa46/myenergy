@@ -166,7 +166,11 @@ class TestPlanEndpoint:
         # and the first point is the battery level right now (values sit AT their label).
         import main
         d = client.get("/api/plan").json()
-        at = {h["label"]: h for h in d["hours"]}
+        # 36 hours repeat labels ("17:00" today and tomorrow). The card is about the next
+        # 24 hours, so match the FIRST hour after now with that label.
+        at = {}
+        for h in d["hours"][1:]:
+            at.setdefault(h["label"], h)
         s = d["summary"]
         assert round(at[s["fullest_at"]]["battery_pct"]) == s["fullest_battery_pct"]
         assert abs(d["hours"][0]["battery_pct"] - main.facility.battery_soc) < 1.0
