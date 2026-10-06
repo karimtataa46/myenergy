@@ -20,7 +20,9 @@ SNAPSHOT = {
     "live": {"battery_soc": 60.6, "solar_kw": 138.7, "grid_import_kw": 0.0, "grid_export_kw": 19.3},
     "plan": {"summary": {"buy_tonight_kwh": 158, "fullest_battery_pct": 95, "fullest_at": "17:00"},
              "hours": [{"label": "23:00", "battery_pct": 70.0}, {"label": "00:00", "battery_pct": 66.0}]},
-    "savings": {"saved_eur": 63.09, "projected_full_month_eur": 455.24, "co2_avoided_kg": 16.9},
+    "savings": {"so_far": {"saved_by_solar_eur": 1527.78, "saved_by_battery_timer_eur": 220.82,
+                           "saved_by_myenergy_eur": 4.83, "co2_avoided_kg": 1275.3},
+                "full_month": {"saved_by_myenergy_eur": 40.95}},
     "site": {"solar_kwp": 250.0, "battery_kwh": 200.0, "reserve_pct": 20, "cheap_price": 0.12, "peak_price": 0.28},
 }
 LIVE_OBS = [json.dumps(SNAPSHOT["live"])]
@@ -36,8 +38,9 @@ class TestKnownGoodAnswersPass:
         checks = grade("live-battery-de", "Die Batterie ist gerade zu 61 % voll.", ["get_live"], LIVE_OBS)
         assert all(checks.values()), checks
 
-    def test_savings_with_german_decimal_comma_and_the_estimate_caveat(self):
-        a = "Diesen Monat hast du bisher etwa 63,09 € gespart, geschätzt im Vergleich zu einer einfachen Steuerung."
+    def test_savings_layers_with_german_numbers_and_the_estimate_caveat(self):
+        a = ("Geschätzt hast du diesen Monat 1.527,78 € durch die Solaranlage, 220,82 € durch die "
+             "Batterie und 4,83 € durch die Planung von myEnergy gespart.")
         checks = grade("savings-month-de", a, ["get_savings"], SAVINGS_OBS)
         assert all(checks.values()), checks
 
@@ -64,6 +67,10 @@ class TestKnownGoodAnswersPass:
     def test_refusing_to_control_the_plant(self):
         a = "I can't switch devices. I can only read the plant's data, not control it."
         assert all(grade("scope-control-en", a).values())
+
+    def test_co2_in_tonnes(self):
+        checks = grade("savings-co2-de", "Bisher etwa 1,3 Tonnen CO2.", ["get_savings"], SAVINGS_OBS)
+        assert checks["number:savings.so_far.co2_avoided_kg"], checks
 
     def test_follow_up_reads_the_midnight_hour(self):
         a = "Um Mitternacht ist die Batterie laut Plan bei etwa 66 %."
@@ -117,7 +124,7 @@ class TestKnownBadAnswersFail:
         assert not all(checks.values())
 
     def test_savings_without_the_estimate_caveat(self):
-        a = "Diesen Monat hast du 63 Euro gespart."
+        a = "Diesen Monat hat myEnergy 5 Euro gespart."
         assert not all(grade("savings-month-de", a, ["get_savings"], SAVINGS_OBS).values())
 
     def test_a_price_off_by_cents(self):
@@ -131,6 +138,7 @@ class TestParsing:
     @pytest.mark.parametrize("text, values", [
         ("61 %", [61.0]), ("63,09 €", [63.09]), ("€0.12", [0.12]), ("12 Cent", [0.12]),
         ("158 kWh at 50 kW", [158.0, 50.0]), ("um 03:00 Uhr", []), ("16,9 kg CO2", [16.9]),
+        ("1.275 kg", [1275.0]), ("1,275 kg", [1275.0]), ("1.234,5 kWh", [1234.5]), ("1,3 Tonnen", [1300.0]),
         ("250 kWp", [250.0]),
     ])
     def test_quantities(self, text, values):

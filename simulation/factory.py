@@ -119,6 +119,16 @@ def export_price_series(prices: List[float], fee: float = 0.01) -> List[float]:
     return [max(0.0, p - fee) for p in prices]
 
 
+def forecast_of(weather: List[DayWeather], error: float = 0.15, seed: int = 1) -> List[DayWeather]:
+    """
+    What a real forecast would have said: each day's cloud cover off by a random
+    amount (standard deviation `error`). Seeded, so results are reproducible.
+    """
+    rng = random.Random(seed)
+    return [DayWeather(cloud_factor=min(max(d.cloud_factor + rng.gauss(0, error), 0.0), 1.0))
+            for d in weather]
+
+
 def generate_month_weather(days: int = 30, seed: int = 42) -> List[DayWeather]:
     """
     A realistic spring/summer month: mix of sunny, partly cloudy, overcast days.
