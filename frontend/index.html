@@ -296,7 +296,7 @@
       <div class="card">
         <div class="seg" role="tablist" aria-label="Period">
           <button type="button" role="tab" id="sv-so" aria-selected="true" data-span="so_far">This month so far</button>
-          <button type="button" role="tab" id="sv-full" aria-selected="false" data-span="full_month">A full month</button>
+          <button type="button" role="tab" id="sv-full" aria-selected="false" data-span="full_month">Last 30 days</button>
         </div>
         <div class="sv-top">
           <div><p class="l">Saved, compared with buying everything from the grid</p><p class="big" id="s-total">…</p><p class="s" id="s-days"></p></div>
@@ -308,7 +308,7 @@
         </div>
         <ul class="layers">
           <li><i style="background:var(--sun)"></i><div><b>Solar panels</b><span>They cover part of the load. They would save this with any controller.</span></div><em id="s-solar">…</em></li>
-          <li><i style="background:var(--battery)"></i><div><b>Battery on a simple timer</b><span>Storing solar and charging at the cheap night rate. A basic timer does this too.</span></div><em id="s-batt">…</em></li>
+          <li><i style="background:var(--battery)"></i><div><b>Battery on a simple price rule</b><span>Storing solar, charging in the cheapest hours of the day and using it in the dearest. A basic rule does this too.</span></div><em id="s-batt">…</em></li>
           <li class="mine"><i style="background:var(--plan)"></i><div><b>myEnergy's planning</b><span id="s-plan-s">What the software adds: it uses the forecast to decide when to buy and when to wait for the sun.</span></div><em id="s-saved">…</em></li>
           <li><i style="background:#2A2F37"></i><div><b>Still paid</b><span>The bill with everything above.</span></div><em id="s-bill">…</em></li>
         </ul>
@@ -564,12 +564,12 @@ function renderSavings() {
   const d = state.savings;
   if (!d) return;
   const L = d[state.span];
-  const solar = L.saved_by_solar_eur, batt = L.saved_by_battery_timer_eur, mine = L.saved_by_myenergy_eur;
+  const solar = L.saved_by_solar_eur, batt = L.saved_by_battery_rule_eur, mine = L.saved_by_myenergy_eur;
   $('s-month').textContent = `${d.month}, estimated`;
   tween($('s-total'), solar + batt + mine, money);
   $('s-days').textContent = state.span === 'so_far'
     ? `Day ${d.days_elapsed} of ${d.days_in_month}, out of a ${money(L.bill_without_anything_eur)} bill without any of it`
-    : `In a 30-day month, out of a ${money(L.bill_without_anything_eur)} bill without any of it`;
+    : `In the last 30 days, out of a ${money(L.bill_without_anything_eur)} bill without any of it`;
   tween($('s-co2'), L.co2_avoided_kg, v => `${whole.format(Math.round(v))} kg`);
   tween($('s-solar'), solar, money);
   tween($('s-batt'), batt, money);
@@ -577,8 +577,9 @@ function renderSavings() {
   tween($('s-bill'), L.bill_eur, money);
   $('s-plan-s').textContent = `What the software adds: it uses the forecast to decide when to buy and when ` +
     `to wait for the sun. ${L.myenergy_pct_of_bill}% of the bill.`;
-  $('s-note').textContent = `Estimated with a simulated month of weather. myEnergy is judged with a forecast ` +
-    `that is off by about ${d.forecast_error_pct}%, like a real one, not with knowledge of the real weather.`;
+  $('s-note').textContent = `Estimated on ${d.prices === 'real' ? 'real German market prices' : 'simulated prices'} ` +
+    `with simulated weather; a full month uses the last 30 days. myEnergy is judged with a solar forecast that is ` +
+    `off by about ${d.forecast_error_pct}%, like a real one, and only the prices already published.`;
   const all = L.bill_without_anything_eur || 1;
   const pct = x => `${Math.max(0, x) / all * 100}%`;
   $('b-solar').style.width = pct(solar);
