@@ -89,7 +89,8 @@
   .price{display:flex;flex-direction:column;gap:2px;background:var(--card2);border-radius:14px;padding:14px 16px;margin-bottom:12px}
   .price b{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
   .price .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle}
-  .tag.cheap{background:rgba(55,138,221,0.18);color:#7FB6EE} .tag.std{background:rgba(255,183,43,0.14);color:var(--sun)}
+  .tag.cheap{background:rgba(55,138,221,0.18);color:#7FB6EE} .tag.std{background:rgba(140,149,164,0.16);color:var(--muted)}
+  .tag.dear{background:rgba(255,90,114,0.15);color:var(--grid)}
   .price span.s{font-size:12.5px;color:var(--muted)}
   .share{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted)}
   .share .meter{flex:1;height:6px;border-radius:99px;background:var(--card2);overflow:hidden}
@@ -272,7 +273,7 @@
           <div><p id="story-headline"></p><p id="story-detail"></p></div>
         </div>
         <div class="kpis">
-          <div class="tile"><p class="l">Bought tonight</p><p class="v" id="k-buy">…</p><p class="s" id="k-buy-s"></p></div>
+          <div class="tile"><p class="l">Bought for the battery, next 24 h</p><p class="v" id="k-buy">…</p><p class="s" id="k-buy-s"></p></div>
           <div class="tile"><p class="l">Free solar into the battery</p><p class="v" id="k-sun">…</p><p class="s">next 24 hours</p></div>
           <div class="tile"><p class="l">Battery at its fullest</p><p class="v" id="k-full">…</p><p class="s" id="k-full-s"></p></div>
         </div>
@@ -281,7 +282,7 @@
           <span><i style="background:var(--muted)"></i>Consumption</span>
           <span><i style="background:var(--grid)"></i>Grid bought for the battery</span>
           <span><i style="background:var(--battery)"></i>Battery level</span>
-          <span><i style="background:rgba(55,138,221,0.45)"></i>Cheap rate</span>
+          <span><i style="background:rgba(55,138,221,0.45)"></i>Cheapest hours</span>
         </div>
         <div class="chart-box"><canvas id="plan-chart" role="img" aria-label="Plan timeline"></canvas></div>
       </div>
@@ -447,20 +448,25 @@ function renderNow() {
   $('t-grid-s').textContent = net > 0.5 ? 'buying' : net < -0.5 ? 'selling surplus' : 'nothing bought or sold';
   setFlow('fl-grid', 'n-grid', net, net > 0);
 
-  if (s) {
-    const cheapNow = Math.abs(d.tariff - s.cheap_price) < 1e-9;
-    $('price-now').textContent = `${eur(d.tariff)}/kWh`;
-    $('price-tag').textContent = cheapNow ? 'cheap rate' : 'standard rate';
-    $('price-tag').className = `tag ${cheapNow ? 'cheap' : 'std'}`;
-    $('price-next').textContent = cheapNow ? `Standard rate (${eur(s.peak_price)}) from ${s.cheap_until}`
-      : `Cheap rate (${eur(s.cheap_price)}) from ${s.cheap_from}`;
-  }
+  $('price-now').textContent = `${eur(d.tariff)}/kWh`;
+  renderPriceTag();
   const share = Math.round((d.solar_fraction || 0) * 100);
   tween($('share'), share, v => `${Math.round(v)}%`);
   $('share-bar').style.width = `${share}%`;
 
   $('flow').setAttribute('aria-label', `Energy flow now: solar ${kw(d.solar_kw)}, the factory uses ${kw(d.consumption_kw)}, ` +
     `battery ${Math.round(d.battery_soc)}% and ${$('t-batt-s').textContent}, grid ${$('t-grid-s').textContent}.`);
+}
+
+/* The price changes every hour: say how this hour compares with the next 24. */
+function renderPriceTag() {
+  const p = state.plan;
+  if (!p || !p.available || !p.hours.length) { $('price-tag').textContent = ''; $('price-next').textContent = ''; return; }
+  const now = p.hours[0], s = p.summary;
+  const band = now.cheap ? ['cheap hour', 'cheap'] : now.dear ? ['expensive hour', 'dear'] : ['average hour', 'std'];
+  $('price-tag').textContent = band[0];
+  $('price-tag').className = `tag ${band[1]}`;
+  $('price-next').textContent = `Cheapest in the next 24 hours: ${eur(s.cheapest_price)} at ${s.cheapest_at}`;
 }
 
 /* ── 2. the plan ────────────────────────────────────────────────────────── */
@@ -539,13 +545,15 @@ function renderPlan() {
   $('story-headline').textContent = p.story.headline;
   $('story-detail').textContent = p.story.detail;
   tween($('k-buy'), s.buy_tonight_kwh, v => `${Math.round(v)} kWh`, `${s.buy_tonight_kwh} kWh`);
-  $('k-buy-s').textContent = s.buy_from ? `at ${eur(s.buy_price)}, ${s.buy_from} to ${s.buy_until}`
+  const windows = (s.buy_windows || []).map(w => `${w[0]} to ${w[1]}`).join(', ');
+  $('k-buy-s').textContent = s.buy_from ? `at about ${eur(s.buy_price)}, ${windows}`
     : (s.buy_without_sun_kwh > 0 ? `${s.buy_without_sun_kwh} kWh without the sun` : 'nothing needed');
   tween($('k-sun'), s.solar_to_battery_kwh, v => `${Math.round(v)} kWh`, `${s.solar_to_battery_kwh} kWh`);
   tween($('k-full'), s.fullest_battery_pct, v => `${Math.round(v)}%`, `${s.fullest_battery_pct}%`);
   $('k-full-s').textContent = `at ${s.fullest_at}`;
   $('plan-chart').setAttribute('aria-label', `Plan timeline for the next ${p.hours.length} hours. ${p.story.headline}. ${p.story.detail}`);
   $('plan-notice').hidden = true; $('plan-body').hidden = false;
+  renderPriceTag();
   drawChart(p);
 }
 
@@ -603,9 +611,9 @@ function renderSystem() {
     <dt>Solar</dt><dd>${Math.round(s.solar_kwp)} kWp</dd>
     <dt>Battery</dt><dd>${Math.round(s.battery_kwh)} kWh, up to ${Math.round(s.battery_power_kw)} kW</dd>
     <dt>Reserve</dt><dd>never below ${s.reserve_pct}%</dd>
-    <dt>Cheap rate</dt><dd>${eur(s.cheap_price)}/kWh, ${s.cheap_from} to ${s.cheap_until}</dd>
-    <dt>Standard rate</dt><dd>${eur(s.peak_price)}/kWh</dd>
-    <dt>Export pays</dt><dd>${eur(s.feed_in_price)}/kWh</dd>
+    <dt>Tariff</dt><dd>Changes every hour: the market price plus ${eur(s.surcharge_eur_kwh)}/kWh for grid fees and taxes</dd>
+    <dt>Export pays</dt><dd>the market price minus ${eur(s.export_fee_eur_kwh)}/kWh</dd>
+    <dt>Prices from</dt><dd>${s.price_source}</dd>
     <dt>Controlled devices</dt><dd>${devices}</dd>`;
 }
 

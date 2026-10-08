@@ -23,7 +23,8 @@ class PlanHour:
     grid_buy_kw: float     # bought from the grid INTO the battery this hour
     battery_pct: float     # planned battery level at the END of this hour
     price: float
-    cheap: bool
+    cheap: bool            # among the cheapest third of the next 24 hours (or the night rate)
+    dear: bool = False     # among the dearest third
 
 
 @dataclass
@@ -33,6 +34,21 @@ class Plan:
     solar_to_battery_kwh: float   # free solar the plan expects to store in the next 24 h
     reason: str
     hours: List[PlanHour] = field(default_factory=list)   # the whole planned timeline
+    dynamic: bool = False         # hourly market prices (True) or a fixed day/night tariff
+
+
+def band_limits(price: List[float]):
+    """The most a 'cheap' hour costs and the least a 'dear' hour costs: the cheapest
+    and the dearest third of the next 24 hours."""
+    day = sorted(price[:24])
+    k = max(1, len(day) // 3)
+    return day[k - 1], day[-k]
+
+
+def price_bands(price: List[float]):
+    """Which hours are cheap and which are dear. Hours beyond 24 are judged against the same day."""
+    cheap_max, dear_min = band_limits(price)
+    return ([p <= cheap_max + 1e-9 for p in price], [p >= dear_min - 1e-9 for p in price])
 
 
 def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
@@ -41,7 +57,10 @@ def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
     Plan the battery from the forecast. Returns None when there is nothing to
     plan with or the solver fails; the caller then falls back to the rule engine.
     """
+    dynamic = forecast.buy_price is not None
     hours = min(len(forecast.solar_kwh), len(forecast.load_kwh), HORIZON_HOURS)
+    if dynamic:
+        hours = min(hours, len(forecast.buy_price), len(forecast.sell_price or forecast.buy_price))
     if hours == 0:
         return None
     solar = list(forecast.solar_kwh[:hours])
@@ -57,8 +76,15 @@ def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
         battery_min_soc=max(cfg.battery_min_soc, min_soc_frac),
         battery_max_soc=min(cfg.battery_max_soc, max_soc_frac),
     )
-    price = [cfg.tariff((forecast.hour + k) % 24) for k in range(hours)]
-    feed_in = [cfg.feed_in_tariff] * hours
+    if dynamic:
+        price = list(forecast.buy_price[:hours])
+        feed_in = list(forecast.sell_price[:hours]) if forecast.sell_price else [cfg.feed_in_tariff] * hours
+        cheap, dear = price_bands(price)
+    else:
+        price = [cfg.tariff((forecast.hour + k) % 24) for k in range(hours)]
+        feed_in = [cfg.feed_in_tariff] * hours
+        cheap = [not cfg.is_peak((forecast.hour + k) % 24) for k in range(hours)]
+        dear = [not c for c in cheap]
     soc_kwh = battery.soc_percent / 100.0 * battery.capacity_kwh
 
     schedule = optimal_battery_schedule(solar, load, price, feed_in, soc_kwh, cfg=plan_cfg)
@@ -75,21 +101,22 @@ def make_plan(battery: BatteryState, forecast: PlanningForecast, cfg,
     full = soc_kwh >= plan_cfg.battery_max_soc * battery.capacity_kwh - 1.0
 
     reason = _explain(battery_kw, grid_charge_now, solar_to_battery, price[0],
-                      cfg.is_peak(forecast.hour), full, surplus_now=surplus[0])
+                      not cheap[0], full, surplus_now=surplus[0])
     timeline = [
         PlanHour(offset=k, solar_kw=solar[k], load_kw=load[k],
                  grid_buy_kw=float(charge[k] - from_solar[k]),
                  battery_pct=float(schedule["soc"][k] / battery.capacity_kwh * 100),
-                 price=price[k], cheap=not cfg.is_peak((forecast.hour + k) % 24))
+                 price=price[k], cheap=cheap[k], dear=dear[k])
         for k in range(hours)
     ]
-    return Plan(battery_kw, grid_charge_now, solar_to_battery, reason, timeline)
+    return Plan(battery_kw, grid_charge_now, solar_to_battery, reason, timeline, dynamic)
 
 
 @dataclass
 class PlanSummary:
-    buy_tonight_kwh: float          # grid energy bought for the battery in the next cheap window
-    buy_without_sun_kwh: float      # what it would buy tonight if the sun didn't shine
+    buy_tonight_kwh: float          # grid energy bought for the battery: in the next cheap window
+                                    # (fixed tariff) or in the next 24 hours (hourly prices)
+    buy_without_sun_kwh: float      # what it would buy if the sun didn't shine
     buy_first: Optional[int]        # offset of the first hour it buys (None = buys nothing)
     buy_last: Optional[int]         # offset of the last hour it buys
     buy_price: Optional[float]
@@ -99,6 +126,28 @@ class PlanSummary:
     tone: str                       # "sun" | "buy" | "hold"
     headline: str
     detail: str
+    windows: List[tuple] = field(default_factory=list)   # (first, last) offsets of each buying block
+    cheapest_offset: int = 0        # the cheapest and dearest hour of the next 24 h
+    cheapest_price: float = 0.0
+    dearest_offset: int = 0
+    dearest_price: float = 0.0
+
+
+def _next_day(plan: Plan):
+    """Hourly prices: every hour of the next 24 in which the plan buys for the battery."""
+    buying = [h for h in plan.hours[:24] if h.grid_buy_kw > 0.5]
+    return buying, sum(h.grid_buy_kw for h in buying)
+
+
+def _blocks(buying: List[PlanHour]) -> List[tuple]:
+    """Consecutive buying hours grouped into (first, last) offsets."""
+    out = []
+    for h in buying:
+        if out and h.offset == out[-1][1] + 1:
+            out[-1] = (out[-1][0], h.offset)
+        else:
+            out.append((h.offset, h.offset))
+    return out
 
 
 def _tonight(plan: Plan):
@@ -130,21 +179,39 @@ def summarize(plan: Plan, fmt_time: Callable[[int], str],
     two is the honest way to say whether the forecast sun changed tonight's
     purchase; comparing "bought" with "stored" would mix unrelated numbers.
     """
-    buying, buy = _tonight(plan)
-    buy_without_sun = _tonight(plan_without_sun)[1] if plan_without_sun else buy
+    window = _next_day if plan.dynamic else _tonight
+    buying, buy = window(plan)
+    buy_without_sun = window(plan_without_sun)[1] if plan_without_sun else buy
     sun_saves = buy_without_sun - buy
     first = buying[0].offset if buying else None
     last = buying[-1].offset if buying else None
-    price = buying[0].price if buying else None
+    if plan.dynamic and buying:
+        price = sum(h.price * h.grid_buy_kw for h in buying) / buy     # what that energy costs on average
+    else:
+        price = buying[0].price if buying else None
     solar = plan.solar_to_battery_kwh
     fullest = max(plan.hours[:24], key=lambda h: h.battery_pct)
-    when = f"between {fmt_time(first)} and {fmt_time(last + 1)}" if buying else ""
+    blocks = _blocks(buying)
+    if plan.dynamic and len(blocks) > 1:
+        when = " and ".join(f"{fmt_time(a)} to {fmt_time(b + 1)}" for a, b in blocks[:2])
+        when = f"at {when}" + (" and a few other hours" if len(blocks) > 2 else "")
+    else:
+        when = f"between {fmt_time(first)} and {fmt_time(last + 1)}" if buying else ""
+    tonight = "in the next 24 hours" if plan.dynamic else "tonight"
+    day = plan.hours[:24]
+    cheapest, dearest = min(day, key=lambda h: h.price), max(day, key=lambda h: h.price)
 
     if sun_saves > SUN_CREDIT_KWH:
         tone, headline = "sun", "Waiting for the sun"
-        bought = f"only {buy:.0f} kWh is bought tonight, {when}," if buying else "nothing is bought tonight,"
+        bought = f"only {buy:.0f} kWh is bought {tonight}, {when}," if buying else f"nothing is bought {tonight},"
         detail = (f"The forecast sun will do part of the work, so {bought} "
                   f"instead of {buy_without_sun:.0f} kWh.")
+    elif buying and plan.dynamic:
+        tone, headline = "buy", "Buying in the cheapest hours"
+        detail = (f"{buy:.0f} kWh is bought {when}, at about €{price:.2f} a kWh, among the cheapest "
+                  f"hours of the next day, so the battery covers the dearest ones.")
+        if solar > SUN_CREDIT_KWH:
+            detail += f" The sun then adds about {solar:.0f} kWh."
     elif buying:
         tone, headline = "buy", "Buying cheap power tonight"
         if solar > SUN_CREDIT_KWH:
@@ -155,7 +222,7 @@ def summarize(plan: Plan, fmt_time: Callable[[int], str],
                       f"so {buy:.0f} kWh is bought {when} at €{price:.2f}.")
     elif solar > SUN_CREDIT_KWH:
         tone, headline = "sun", "Running on the sun"
-        detail = (f"Nothing needs to be bought tonight. The sun will put about "
+        detail = (f"Nothing needs to be bought {tonight}. The sun will put about "
                   f"{solar:.0f} kWh into the battery for free.")
     else:
         tone, headline = "hold", "Holding steady"
@@ -163,7 +230,8 @@ def summarize(plan: Plan, fmt_time: Callable[[int], str],
                   "The grid covers the load whenever the battery can't.")
 
     return PlanSummary(buy, buy_without_sun, first, last, price, solar, fullest.battery_pct,
-                       fullest.offset, tone, headline, detail)
+                       fullest.offset, tone, headline, detail, blocks,
+                       cheapest.offset, cheapest.price, dearest.offset, dearest.price)
 
 
 def _explain(battery_kw, grid_charge_now, solar_to_battery, price, is_peak, full,

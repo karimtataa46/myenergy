@@ -29,8 +29,8 @@ class TestSite:
         assert d["name"] and d["location"] and d["timezone"] == "Europe/Berlin"
         assert d["solar_kwp"] == 250 and d["battery_kwh"] == 200
         assert d["reserve_pct"] == 20
-        assert (d["cheap_from"], d["cheap_until"]) == ("22:00", "07:00")
-        assert d["cheap_price"] < d["peak_price"]
+        assert d["tariff"] == "dynamic" and "SMARD" in d["price_source"]
+        assert d["surcharge_eur_kwh"] > 0 and d["export_fee_eur_kwh"] >= 0
         assert [x["name"] for x in d["devices"]] == ["Delivery Van EV", "Industrial Water Heater"]
 
     def test_works_without_a_forecast(self, client, monkeypatch):
