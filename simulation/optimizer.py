@@ -120,9 +120,14 @@ def optimal(state: StepState) -> float:
     if H == 0:
         return 0.0
 
-    # Tariff for each future hour comes from its hour-of-day (this facility's).
-    price = [state.cfg.tariff((state.hour + k) % 24) for k in range(H)]
-    feed_in = [state.cfg.feed_in_tariff] * H
+    # Hourly prices when the run has them (dynamic tariff), otherwise the tariff for
+    # each future hour comes from its hour-of-day (this facility's).
+    if state.forecast_buy_price:
+        price = list(state.forecast_buy_price[:H])
+        feed_in = list(state.forecast_sell_price[:H]) or [state.cfg.feed_in_tariff] * H
+    else:
+        price = [state.cfg.tariff((state.hour + k) % 24) for k in range(H)]
+        feed_in = [state.cfg.feed_in_tariff] * H
 
     sched = optimal_battery_schedule(solar, load, price, feed_in, state.soc_kwh,
                                      cfg=state.cfg)
