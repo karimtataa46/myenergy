@@ -173,3 +173,18 @@ def live_server(mock_network):
 
     server.should_exit = True
     thread.join(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def no_internet(monkeypatch):
+    """Tests never reach the internet. A test that tries fails at once with a clear
+    message, instead of hanging on (or passing because of) a slow outside service.
+    (The browser in the E2E tests is a separate process and may still load Chart.js.)"""
+    import socket
+    real = socket.create_connection
+
+    def guard(address, *args, **kwargs):
+        if address[0] not in ("localhost", "127.0.0.1", "::1"):
+            raise OSError(f"tests must not reach the internet (tried {address[0]})")
+        return real(address, *args, **kwargs)
+    monkeypatch.setattr(socket, "create_connection", guard)

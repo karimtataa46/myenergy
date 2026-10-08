@@ -103,10 +103,13 @@ class TestRealForecastOnly:
 class TestLivePlantWithoutWeather:
     def _refresh(self, monkeypatch, fetch):
         import asyncio
+        from concurrent.futures import ThreadPoolExecutor
         import main
         import weather
         monkeypatch.setattr(weather, "fetch_real_forecast", fetch)
-        asyncio.run(main._refresh_forecast())
+        # Its own thread: the browser tests leave an event loop running in this one.
+        with ThreadPoolExecutor(1) as pool:
+            pool.submit(asyncio.run, main._refresh_forecast()).result()
         return main
 
     def test_a_failed_refresh_keeps_the_last_real_forecast(self, monkeypatch):
