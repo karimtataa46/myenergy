@@ -429,7 +429,8 @@ function renderNow() {
   $('now-updated').textContent = `Updated ${clock(d.ts)}`;
 
   tween($('t-solar'), d.solar_kw, kw);
-  $('t-solar-s').textContent = s ? `of ${Math.round(s.solar_kwp)} kWp installed` : '';
+  $('t-solar-s').textContent = d.solar_source === 'clear-sky model' ? 'no weather data: clear-sky model'
+    : s ? `of ${Math.round(s.solar_kwp)} kWp installed` : '';
   setFlow('fl-solar', 'n-solar', d.solar_kw, true);
 
   tween($('t-load'), d.consumption_kw, kw);
@@ -539,7 +540,8 @@ function renderPlan() {
   }
   const s = p.summary;
   $('plan-updated').textContent = `Plan updated ${clock(p.generated_at)}` +
-    (p.forecast_fetched_at ? `, forecast from ${clock(p.forecast_fetched_at)}` : '');
+    (p.forecast_fetched_at ? `, weather from ${p.forecast_source || 'the forecast'} at ${clock(p.forecast_fetched_at)}` : '') +
+    (p.forecast_error ? ` (couldn't refresh since)` : '');
   $('story').className = `story tone-${p.story.tone}`;
   $('story-ic').innerHTML = ICONS[p.story.tone] || ICONS.hold;
   $('story-headline').textContent = p.story.headline;

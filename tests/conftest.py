@@ -103,6 +103,9 @@ def mock_network(monkeypatch, fake_place):
     # forecast -> the offline clear-sky model instead of a real HTTP call
     monkeypatch.setattr(weather, "fetch_forecast",
                         lambda *a, **k: weather._synthetic_forecast(*a, **k))
+    # the live plant asks for a real forecast: give it a fixed one, labelled as a test
+    monkeypatch.setattr(weather, "fetch_real_forecast",
+                        lambda *a, **k: (weather._synthetic_forecast(*a, **k), "test forecast"))
 
     # geocoding -> a fixed Munich/DE place (None for a blank query)
     monkeypatch.setattr(pricing_service, "resolve_city",
