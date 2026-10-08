@@ -36,11 +36,16 @@ def irradiance_to_solar_kw(irradiance_wm2: float) -> float:
     return min(raw_kw, PANEL_CAPACITY_KW)  # cap at installed capacity
 
 
-def fetch_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[WeatherForecastHour]:
-    """
-    Fetch 48-hour solar irradiance forecast from Open-Meteo.
-    Returns list of WeatherForecastHour sorted by timestamp.
-    """
+SOURCE_OPEN_METEO = "Open-Meteo"
+SOURCE_DWD = "Deutscher Wetterdienst (DWD), via Bright Sky"
+
+
+class ForecastUnavailable(Exception):
+    """No real forecast could be fetched. The message says why, source by source."""
+
+
+def fetch_open_meteo(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[WeatherForecastHour]:
+    """48-hour solar irradiance forecast from Open-Meteo (raises on any failure)."""
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
@@ -48,15 +53,68 @@ def fetch_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[W
         f"&forecast_days=2"
         f"&timezone=UTC"   # return real UTC times so they match datetime.now(timezone.utc)
     )
+    with urllib.request.urlopen(url, timeout=8) as response:
+        return _parse_open_meteo(json.loads(response.read()))
 
+
+def fetch_dwd(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[WeatherForecastHour]:
+    """
+    The German weather service's forecast (MOSMIX) via Bright Sky, free and without a
+    key. Today's past hours are station measurements. `solar` is kWh/m2 per hour,
+    which is the same number as the average W/m2 divided by 1000.
+    """
+    today = datetime.now(timezone.utc).date()
+    url = (f"https://api.brightsky.dev/weather?lat={lat}&lon={lon}"
+           f"&date={today.isoformat()}&last_date={(today + timedelta(days=2)).isoformat()}&tz=Etc/UTC")
+    with urllib.request.urlopen(url, timeout=8) as response:
+        return _parse_bright_sky(json.loads(response.read()))
+
+
+def _parse_bright_sky(data: dict) -> list[WeatherForecastHour]:
+    result = []
+    for w in data["weather"]:
+        irr = float(w.get("solar") or 0.0) * 1000
+        result.append(WeatherForecastHour(
+            timestamp=datetime.fromisoformat(w["timestamp"]).astimezone(timezone.utc),
+            solar_irradiance_wm2=irr,
+            cloud_cover_percent=float(w.get("cloud_cover") or 0),
+            temperature_c=float(w["temperature"]) if w.get("temperature") is not None else 20.0,
+            estimated_solar_kw=irradiance_to_solar_kw(irr),
+        ))
+    if not result:
+        raise ValueError("no hours in the answer")
+    return sorted(result, key=lambda f: f.timestamp)
+
+
+def fetch_real_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON):
+    """
+    A real forecast and where it came from: Open-Meteo first, the DWD second.
+    Never a made-up one: if both fail, raise ForecastUnavailable with the reasons,
+    so the caller can keep its last real forecast or run on the safe rules.
+    """
+    reasons = []
+    for source, fetch in ((SOURCE_OPEN_METEO, fetch_open_meteo), (SOURCE_DWD, fetch_dwd)):
+        try:
+            hours = fetch(lat, lon)
+            if hours:
+                return hours, source
+            reasons.append(f"{source}: no hours")
+        except Exception as e:                         # network, HTTP error, bad answer
+            reasons.append(f"{source}: {type(e).__name__}: {e}"[:200])
+    raise ForecastUnavailable("; ".join(reasons))
+
+
+def fetch_forecast(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON) -> list[WeatherForecastHour]:
+    """
+    For the developer APIs (per-city estimates): a real forecast if there is one,
+    otherwise the clear-sky model. The live plant never uses this fallback; it
+    calls fetch_real_forecast and runs on its safe rules without real weather.
+    """
     try:
-        with urllib.request.urlopen(url, timeout=8) as response:
-            data = json.loads(response.read())
-        return _parse_open_meteo(data)
-    except Exception:
-        # Offline/rate-limited fallback: synthetic clear-sky, but location-aware
-        # so different cities still differ (sun timing by longitude, strength by
-        # latitude) instead of all looking identical.
+        return fetch_real_forecast(lat, lon)[0]
+    except ForecastUnavailable:
+        # Location-aware clear-sky model, so different cities still differ
+        # (sun timing by longitude, strength by latitude).
         return _synthetic_forecast(lat, lon)
 
 
