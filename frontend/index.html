@@ -579,8 +579,8 @@ function renderSavings() {
   tween($('s-bill'), L.bill_eur, money);
   $('s-plan-s').textContent = `What the software adds: it uses the forecast to decide when to buy and when ` +
     `to wait for the sun. ${L.myenergy_pct_of_bill}% of the bill.`;
-  $('s-note').textContent = `Estimated with a simulated month of weather. myEnergy is judged with a forecast ` +
-    `that is off by about ${d.forecast_error_pct}%, like a real one, not with knowledge of the real weather.`;
+  $('s-note').textContent = `Estimated with a simulated month of weather, not measured. myEnergy is judged ` +
+    `with an imperfect forecast (each day's cloud cover shifted at random), not with knowledge of the real weather.`;
   const all = L.bill_without_anything_eur || 1;
   const pct = x => `${Math.max(0, x) / all * 100}%`;
   $('b-solar').style.width = pct(solar);
