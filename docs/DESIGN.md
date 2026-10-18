@@ -1,5 +1,12 @@
 # Design Audit
 
+> **Historical document (written before October 2026; not kept up to date).** It
+> describes the code as it was then: four HTML pages, "two brains", 152 checks and six
+> `sys.path` edits. Since then the interface became one page (#21), `energy_manager.py`
+> joins the forecast planner and the rule engine (#14), and the suite has 276 tests. The
+> refactors R1 to R4 below were not done. The current architecture is described in
+> `README.md`.
+
 A working document. It maps how myEnergy is built **today**, names the structural
 problems honestly, proposes a **target** architecture, and lists the refactors in
 priority order. We edit this together and use it to drive the cleanup, one
