@@ -4,6 +4,11 @@
 
 **Predictive energy management for factories with solar and battery storage.**
 
+![The operator page: live power flows, the decision and its reason, and the plan for the next 36 hours](docs/screenshot.png)
+
+*The operator page on 18 October 2026, with the real Munich weather forecast and real German
+market prices. The factory, its load and its battery are simulated.*
+
 myEnergy controls a **simulated** factory with solar panels, a battery and a grid
 connection. Every 5 seconds it decides whether the battery charges, discharges or
 holds. Unlike a normal reactive controller, it is predictive: it reads a real weather
@@ -168,9 +173,12 @@ docker compose up -d
 
 ```bash
 pip install -r requirements.txt
-cd backend
-uvicorn main:app --port 8000
+./start.sh                               # then open http://localhost:8000
 ```
+
+`start.sh` runs `uvicorn main:app --loop asyncio --http h11` from `backend/`, the same
+command as the Docker image. The app calls the real Open-Meteo, DWD and Energy-Charts
+APIs, so it needs internet access.
 
 ## Testing
 
