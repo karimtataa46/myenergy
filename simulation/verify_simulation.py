@@ -178,3 +178,4 @@ if FAIL == 0:
     print("  physics holds for both controllers. The euro figures are trustworthy.")
 else:
     print("  SOMETHING IS WRONG — do not trust the savings number until fixed.")
+    raise SystemExit(1)   # a non-zero exit fails the CI step

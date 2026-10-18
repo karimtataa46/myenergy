@@ -429,7 +429,8 @@ function renderNow() {
   $('now-updated').textContent = `Updated ${clock(d.ts)}`;
 
   tween($('t-solar'), d.solar_kw, kw);
-  $('t-solar-s').textContent = s ? `of ${Math.round(s.solar_kwp)} kWp installed` : '';
+  $('t-solar-s').textContent = d.solar_source === 'clear-sky model' ? 'no weather data: clear-sky model'
+    : s ? `of ${Math.round(s.solar_kwp)} kWp installed` : '';
   setFlow('fl-solar', 'n-solar', d.solar_kw, true);
 
   tween($('t-load'), d.consumption_kw, kw);
@@ -539,7 +540,8 @@ function renderPlan() {
   }
   const s = p.summary;
   $('plan-updated').textContent = `Plan updated ${clock(p.generated_at)}` +
-    (p.forecast_fetched_at ? `, forecast from ${clock(p.forecast_fetched_at)}` : '');
+    (p.forecast_fetched_at ? `, weather from ${p.forecast_source || 'the forecast'} at ${clock(p.forecast_fetched_at)}` : '') +
+    (p.forecast_error ? ` (couldn't refresh since)` : '');
   $('story').className = `story tone-${p.story.tone}`;
   $('story-ic').innerHTML = ICONS[p.story.tone] || ICONS.hold;
   $('story-headline').textContent = p.story.headline;
@@ -578,8 +580,8 @@ function renderSavings() {
   $('s-plan-s').textContent = `What the software adds: it uses the forecast to decide when to buy and when ` +
     `to wait for the sun. ${L.myenergy_pct_of_bill}% of the bill.`;
   $('s-note').textContent = `Estimated on ${d.prices === 'real' ? 'real German market prices' : 'simulated prices'} ` +
-    `with simulated weather; a full month uses the last 30 days. myEnergy is judged with a solar forecast that is ` +
-    `off by about ${d.forecast_error_pct}%, like a real one, and only the prices already published.`;
+    `with simulated weather, not measured; a full month uses the last 30 days. myEnergy is judged with an ` +
+    `imperfect solar forecast (each day's cloud cover shifted at random) and only the prices already published.`;
   const all = L.bill_without_anything_eur || 1;
   const pct = x => `${Math.max(0, x) / all * 100}%`;
   $('b-solar').style.width = pct(solar);

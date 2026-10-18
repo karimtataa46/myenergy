@@ -4,38 +4,49 @@
 
 **Predictive energy management for factories with solar and battery storage.**
 
-myEnergy reads a facility's solar inverter, battery and grid meter and decides, every
-few seconds, when to charge, discharge, hold, or draw from the grid. Unlike a normal
-reactive controller, it is predictive: it reads the weather and price forecast and
-plans ahead, so it stores cheap energy before an expensive peak instead of reacting
-once the peak has already arrived.
+![The operator page: live power flows, the decision and its reason, and the plan for the next 36 hours](docs/screenshot.png)
 
-**What it saves, honestly.** The demo factory (250 kWp solar, 200 kWh battery) pays the
-real German day-ahead market price, which changes every hour, plus a fixed amount for
-grid fees and taxes. On the last 30 days of real prices (as of 8 October 2026, with
-simulated weather) one month breaks down like this:
+*The operator page on 18 October 2026, with the real Munich weather forecast and real German
+market prices. The factory, its load and its battery are simulated.*
+
+myEnergy controls a **simulated** factory with solar panels, a battery and a grid
+connection. Every 5 seconds it decides whether the battery charges, discharges or
+holds. Unlike a normal reactive controller, it is predictive: it reads a real weather
+forecast and real hourly market prices, plans the next 36 hours, and stores cheap
+energy before an expensive peak instead of reacting once the peak has arrived. When
+the sun is due back soon, it can use the battery now and let the sun refill it,
+instead of buying grid power.
+
+**What it saves, honestly.** These numbers come from a simulation, not from a real
+plant. The demo factory (250 kWp solar, 200 kWh battery) pays the real German
+day-ahead market price, which changes every hour, plus a fixed amount for grid fees and
+taxes. On the real prices of 18 September to 17 October 2026, with simulated weather,
+one month breaks down like this:
 
 | Layer | Saves per month |
 |-------|-----------------|
-| Solar panels | about €6,000 |
-| Battery on a simple price rule (store solar, charge in the cheapest third of the day's hours, use it in the dearest) | about €960 |
-| **myEnergy's planning**, with a solar forecast about 15% off and only published prices | **about €300** (4.7% of the bill) |
+| Solar panels | about €5,800 |
+| Battery on a simple price rule (store solar, charge in the cheapest third of the day's hours, use it in the dearest) | about €830 |
+| **myEnergy's planning**, with an imperfect solar forecast and only the prices already published | **about €290** (4.5% of the bill) |
 
 The panels and a simple price rule save money with any controller, so only the last
-line is the software's. With a perfect forecast it would be about €520, with a poor one
-(30% off) about €280. On a fixed day/night tariff the same comparison gives only about
-€40, because a timer already gets most of the battery's value there: forecast-based
-planning pays off when prices change every hour. The numbers move as the 30-day window
-moves; the page shows the current ones.
+line is the software's. With a perfect forecast it would be about €320, with a worse one
+about €270. The "imperfect forecast" shifts each simulated day's cloud cover by a
+random amount (standard deviation 0.15; the worse one uses 0.30). The simulated weather
+is summer-like (seeded, one cloud value per day), so a full year would save less. On a
+fixed day/night tariff the same comparison gives only about €40, because a timer
+already gets most of the battery's value there: forecast-based planning pays off when
+prices change every hour. The numbers move as the 30-day window moves; the page shows
+the current ones.
 
 An earlier version of this README claimed about €740 a month on the fixed tariff. That
 compared the software with a controller that never charged at night, and let it see the
 real future weather, so it credited the night tariff and a perfect forecast to the
 software.
 
-> **Status:** working prototype. The "facility" is a physically realistic simulation,
-> not yet real hardware. The decision engine, the optimiser and the savings maths are
-> all real and independently tested.
+> **Status:** learning prototype. The factory is a simulation, not real hardware. The
+> decision engine, the optimiser and the savings maths are covered by automated tests.
+> See [Known limitations](#known-limitations).
 
 ## What it does
 
@@ -64,7 +75,9 @@ works too; details in [automation/README.md](automation/README.md)):
   answers grounded in the plant's real numbers.
 * **Daily briefing**: every morning a short German briefing about today and tonight.
 * **Evaluation**: one command asks the agent 20 questions and grades every answer against
-  the API's numbers at that moment, including questions it must decline.
+  the API's numbers at that moment, including questions it must decline. The first real
+  run graded only 7 answers (the free model quota ran out) and found two defects, now
+  fixed; a full re-run is still pending.
 
 ## How it works
 
@@ -75,12 +88,18 @@ built on top of it.
 frontend/          vanilla HTML, CSS and JS (no framework)
 backend/           FastAPI server
   main.py            REST API and the 5 second control loop
-  brain.py           rule based live decision engine
-  live_sim.py        drives /sim with the LP optimiser
+  energy_manager.py  the one decision entry point the loop calls
+  planner.py         plans the battery over 36 hours with the LP optimiser
+  brain.py           safety rules, flexible devices, and the fallback rules
   simulator.py       simulated facility hardware (solar, load, battery)
-  weather.py         Open-Meteo forecast (no API key needed)
-  savings.py         this month's savings, layer by layer, via the validated engine
-  database.py        SQLite history
+  weather.py         real forecast: Open-Meteo, then the German weather service (DWD)
+  prices.py          real German day-ahead prices (Energy-Charts)
+  savings.py         savings layer by layer, via the validated engine (real prices,
+                     simulated weather)
+  assistant.py       bridge to the AI chat agent
+  database.py        SQLite history (last 24 hours)
+  (estimate_service, pricing_service, facility_live, live_sim: older developer
+   APIs that no page uses any more)
 simulation/        the validated, tested core
   factory.py         facility model, tariffs, price series
   engine.py          energy balance physics
@@ -111,6 +130,31 @@ rule on the same hardware and the same real prices, with the optimiser steering 
 imperfect solar forecast (`factory.forecast_of`) and only the prices published by then,
 never as a number the solar panels or a simple rule would have produced anyway.
 
+In the live system the optimiser's plan is advisory: safety rules re-check it every
+tick (the battery stays between 20% and 95%, it never discharges into the grid, and
+total demand stays under a 95 kW ceiling). Without a real forecast the system does not
+plan at all and runs on the safe rules.
+
+The optimiser minimises **cost**, not grid energy. Usually the two agree, but when night
+power is cheap it may buy grid energy to store it for the expensive evening.
+
+## Known limitations
+
+* **Simulated plant.** There is no connection to real inverters, batteries or meters.
+  In the live demo, the plant's solar output is taken from the same forecast the
+  planner uses, so the forecast is never wrong there.
+* **Two solar models disagree.** The live forecast converts sunlight at 1.0 × the
+  array's rated power, while the savings simulation peaks at 0.62 ×. Real plants are
+  usually around 0.75 to 0.85.
+* **Solar is read one hour late.** Open-Meteo reports each hour's radiation as the mean
+  of the *preceding* hour; the code treats it as the following hour.
+* **The savings simulation is coarse.** The prices are real, but the weather is not: one
+  cloud value per day and summer-like, plus a fixed load profile with no weekends and no
+  demand (peak power) charge in the cost. "Cloudy now, sunny in two hours" never happens
+  inside it.
+* **Cost only.** No battery wear in the optimiser, no "battery full by time X" rule, and
+  no option to minimise grid energy or CO₂ instead of cost.
+
 ## Run it with Docker
 
 The whole app is containerised, so it runs the same way on any machine that has Docker
@@ -132,9 +176,12 @@ docker compose up -d
 
 ```bash
 pip install -r requirements.txt
-cd backend
-uvicorn main:app --port 8000
+./start.sh                               # then open http://localhost:8000
 ```
+
+`start.sh` runs `uvicorn main:app --loop asyncio --http h11` from `backend/`, the same
+command as the Docker image. The app calls the real Open-Meteo, DWD and Energy-Charts
+APIs, so it needs internet access.
 
 ## Testing
 
@@ -149,8 +196,8 @@ live). It covers the full test pyramid:
 | **E2E** | the operator interface in a real headless browser | Playwright |
 | **AI agents** | the n8n workflows match the API, and the eval's grader passes good answers and fails bad ones | pytest |
 
-**328 automated checks** (277 pytest, plus 39 engine and 12 optimiser proofs), with a
-coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
+**284 pytest tests** (including 8 browser tests), and standalone engine and optimiser
+proofs, with a coverage gate enforced in CI. Every defect the suite finds is filed as an issue, fixed,
 guarded by a regression test, and recorded in the [defect log](docs/BUGS.md).
 
 Run it locally:
@@ -165,8 +212,8 @@ pytest -m "not e2e"                      # skip the slow browser tests
 
 ## Tech stack
 
-Python, FastAPI, Docker and Docker Compose, SciPy (linear programming), SQLite, Open-Meteo,
-vanilla JavaScript.
+Python, FastAPI, Docker and Docker Compose, SciPy (linear programming), SQLite, Open-Meteo
+and DWD (weather), Energy-Charts (prices), vanilla JavaScript, Chart.js.
 
 **AI and automation:** n8n (AI Agent, tools, memory, scheduled workflows), Google Gemini API,
 prompt engineering, LLM evaluation.

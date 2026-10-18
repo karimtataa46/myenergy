@@ -9,9 +9,9 @@ simulation engine (simulation/engine.py):
   + battery, price rule   a hand-written rule with no forecast: store surplus solar,
                           fill the battery in the cheapest third of the day's hours,
                           use it in the dearest third
-  + myEnergy              the optimiser the live system runs, steering by a solar
-                          forecast that is off by about 15% (real forecasts never are
-                          perfect) and the published day-ahead prices
+  + myEnergy              the optimiser the live system runs, steering by an imperfect
+                          solar forecast (each day's cloud cover shifted at random,
+                          standard deviation 0.15) and the published day-ahead prices
 
 Only the last layer is what the software adds. The panels and a simple price rule
 save money without it, so they are reported separately instead of being counted as

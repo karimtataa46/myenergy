@@ -11,3 +11,7 @@ data/*.sqlite*
 .DS_Store
 .idea/
 .vscode/
+
+# Secrets: never copy environment files into the image
+.env
+.env.*

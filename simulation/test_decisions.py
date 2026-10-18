@@ -137,3 +137,5 @@ print("=" * 70)
 if FAIL == 0:
     print("  The decision maker is verified: it matches an independent optimum,")
     print("  obeys every decision law, and always picks the cheapest path.")
+else:
+    raise SystemExit(1)   # a non-zero exit fails the CI step

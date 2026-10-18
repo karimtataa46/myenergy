@@ -70,6 +70,8 @@ def _page(name: str) -> FileResponse:
 facility = sim_module.FacilitySimulator()
 latest_snapshot: dict = {}
 forecast_cache: list = []
+forecast_source: str = ""                 # where the forecast in forecast_cache came from
+forecast_error: Optional[str] = None      # why the last refresh failed, if it did
 forecast_fetched_at: Optional[datetime] = None
 _forecast_lock = threading.Lock()
 
@@ -186,6 +188,8 @@ async def _control_loop():
                 fc = forecast_cache[:]
 
             reference_solar = weather_module.get_current_solar(fc)   # 100 kWp reference
+            # The simulated plant follows the real weather; with none it uses its clear-sky
+            # model, and says so in the snapshot (solar_source).
             solar = facility.get_solar(override_kw=None if reference_solar is None
                                        else facility.scale_to_array(reference_solar))
             battery = facility.get_battery()
@@ -260,6 +264,7 @@ async def _control_loop():
             snap = {
                 "ts": now.isoformat(),
                 "solar_kw": solar.power_kw,
+                "solar_source": "forecast" if reference_solar is not None else "clear-sky model",
                 "battery_soc": facility.battery_soc,
                 "battery_kw": decision.battery_kw,
                 "grid_import_kw": grid.import_kw,
@@ -303,13 +308,23 @@ price_book = prices_module.PriceBook()
 
 
 async def _refresh_forecast():
-    global forecast_cache, forecast_fetched_at
+    """Fetch a REAL forecast. If none can be had, keep the last real one (it covers
+    48 hours) and, without any, let the plant run on its safe rules. Never plan with
+    made-up weather: a fake sunny day makes it wait for sun that never comes (#39)."""
+    global forecast_cache, forecast_fetched_at, forecast_source, forecast_error
     print("[weather] fetching forecast...")
-    fc = await asyncio.to_thread(weather_module.fetch_forecast)
+    try:
+        fc, source = await asyncio.to_thread(weather_module.fetch_real_forecast)
+    except weather_module.ForecastUnavailable as e:
+        forecast_error = str(e)
+        print(f"[weather] no real forecast ({e}); "
+              + ("keeping the last one" if forecast_cache else "running on the safe rules"))
+        return
     with _forecast_lock:
         forecast_cache = fc
         forecast_fetched_at = datetime.now(timezone.utc)
-    print(f"[weather] got {len(fc)} hourly forecasts")
+        forecast_source, forecast_error = source, None
+    print(f"[weather] got {len(fc)} hourly forecasts from {source}")
 
 
 # ---- API endpoints ------------------------
@@ -417,8 +432,9 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
     plan = energy_manager.plan_for(battery, forecast, DEMO_CFG)
     if plan is None:
         return {"available": False,
-                "message": "No forecast yet, so the system is running on its safe rules. "
-                           "The plan appears as soon as a forecast arrives."}
+                "message": "No weather forecast, so the system is running on its safe rules. "
+                           "The plan appears as soon as a forecast arrives.",
+                "forecast_error": forecast_error}
 
     tz = ZoneInfo(sim_module.DEMO_TIMEZONE)
     hour0 = now.replace(minute=0, second=0, microsecond=0)
@@ -429,6 +445,8 @@ def _plan_response(now: Optional[datetime] = None) -> dict:
         "available": True,
         "generated_at": now.isoformat(),
         "forecast_fetched_at": fetched.isoformat() if fetched else None,
+        "forecast_source": forecast_source,
+        "forecast_error": forecast_error,      # set when the newest refresh failed (an older forecast is in use)
         "site": _site_info(),
         "story": {"tone": s.tone, "headline": s.headline, "detail": s.detail},
         "summary": {
