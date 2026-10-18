@@ -31,3 +31,8 @@ htmlcov/
 automation/evals/results/
 automation/briefings/*.md
 automation/dev/requests.jsonl
+
+# Secrets: environment files with API keys must never be committed
+.env
+.env.*
+!.env.example
