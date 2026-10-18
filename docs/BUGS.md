@@ -7,11 +7,12 @@ GitHub issue (full repro steps live there); this file is the dashboard.
 the detail → a row is added here → the fix lands → a **regression test** locks it
 so it can never silently return → the issue is closed.
 
-**Status:** 15 logged, 13 fixed, 2 fixed and waiting for a re-run of the agent's
+**Status:** 16 logged, 14 fixed, 2 fixed and waiting for a re-run of the agent's
 evaluation. 2 caught by the automated test suite, 1 by a scenario experiment, 1 by a live
-run against real weather, 3 by checking the user interface against real data, 2 by the AI
-agent's evaluation against the live API, 6 by manual review during development (before the
-suite existed which is exactly why the suite is being built now).
+run against real weather, 1 on the deployed app (Render), 3 by checking the user interface
+against real data, 2 by the AI agent's evaluation against the live API, 6 by manual review
+during development (before the suite existed, which is why those six have no regression
+test).
 
 ### Severity
 | Level | Meaning |
@@ -25,6 +26,7 @@ suite existed which is exactly why the suite is being built now).
 
 | ID | Severity | Area | Defect | Found by | Status | Fixed in |
 |----|----------|------|--------|----------|--------|----------|
+| [#39](https://github.com/karimtataa46/myenergy/issues/39) | Medium | `weather.py`, `main.py` | When Open-Meteo could not be reached, the live plant silently planned with a made-up clear-sky forecast (130 kW of solar under a fully overcast sky, a plan "waiting for the sun", and a page saying "Running normally") | **deployed app** (Render could not reach Open-Meteo); regression: `test_with_no_source_it_says_why_instead_of_inventing_weather`, `test_a_failed_refresh_keeps_the_last_real_forecast`, `test_without_any_forecast_the_plan_says_so` | ✅ Fixed | `5d01a28` |
 | [#29](https://github.com/karimtataa46/myenergy/issues/29) | Low | chat agent (`get_live` tool description) | The agent called the plant "155 kWp": it read the clear-day peak output (155 kW) as the array's size (250 kWp) | **reading the eval's answers** (the grader can't catch a real number with the wrong meaning); regression: eval case `site-array-en` | 🔧 Fixed, re-run pending | PR #27 |
 | [#28](https://github.com/karimtataa46/myenergy/issues/28) | Medium | chat agent (system prompt) | English questions got German answers (3 of 3 in the first run) | **agent eval** (`language` check); regression: every English eval case | 🔧 Fixed, re-run pending | PR #27 |
 | [#22](https://github.com/karimtataa46/myenergy/issues/22) | Medium | `planner.py`, `brain.py` | The "right now" sentence contradicted the power flow: "the grid covers the load" while the plant exported 31 kW of solar surplus | **interface check** against live data; regression: `test_the_sentence_matches_the_actual_power_flow` | ✅ Fixed | `bfc7d2f` |
