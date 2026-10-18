@@ -47,6 +47,29 @@ def timer(s: StepState) -> float:
     return min(max(room, 0.0), s.cfg.battery_max_charge_kw)
 
 
+# ── Fair baseline on a dynamic tariff: a hand-written price rule ─────────────
+
+def price_rule(s: StepState) -> float:
+    """
+    What a sensible installer would set up for hourly prices, without a solar
+    forecast: store solar surplus; in the cheapest third of today's hours, fill the
+    battery from the grid; in the dearest third, use it; otherwise leave it.
+    Today's prices are known a day ahead, so the rule may look at them.
+    """
+    net = s.solar_kwh - s.load_kwh
+    if net > 0:
+        return net
+    day = sorted(s.day_buy_prices or [s.price_now()])
+    k = max(1, len(day) // 3)
+    price = s.price_now()
+    if price <= day[k - 1]:
+        room = s.cfg.battery_max_soc * s.capacity_kwh - s.soc_kwh
+        return min(max(room, 0.0), s.cfg.battery_max_charge_kw)
+    if price >= day[-k]:
+        return net                                   # cover the deficit from the battery
+    return 0.0
+
+
 # ── myEnergy: predictive + tariff-aware ──────────────────────────────────────
 
 # How full we want the battery by the start of the peak window, as a function

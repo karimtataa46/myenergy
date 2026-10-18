@@ -21,7 +21,7 @@ SNAPSHOT = {
     "plan": {"summary": {"buy_tonight_kwh": 158, "fullest_battery_pct": 95, "fullest_at": "17:00",
                          "cheapest_at": "13:00", "cheapest_price": 0.224},
              "hours": [{"label": "23:00", "battery_pct": 70.0}, {"label": "00:00", "battery_pct": 66.0}]},
-    "savings": {"so_far": {"saved_by_solar_eur": 1527.78, "saved_by_battery_timer_eur": 220.82,
+    "savings": {"so_far": {"saved_by_solar_eur": 1527.78, "saved_by_battery_rule_eur": 220.82,
                            "saved_by_myenergy_eur": 4.83, "co2_avoided_kg": 1275.3},
                 "full_month": {"saved_by_myenergy_eur": 40.95}},
     "site": {"solar_kwp": 250.0, "battery_kwh": 200.0, "reserve_pct": 20, "cheap_price": 0.12, "peak_price": 0.28},

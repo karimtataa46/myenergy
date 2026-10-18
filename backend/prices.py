@@ -123,3 +123,35 @@ class PriceBook:
                 return out
             out.append(to_hour_price(t, self._market[back], estimated=True))
         return out
+
+
+def daily_prices(first: date, days: int, fetch: Optional[Callable[[date, date], Market]] = None):
+    """
+    Buy and sell prices for `days` plant-local days from `first`: 24 values per day,
+    hour 0 = local midnight (the simulation's clock). Returns (buy, sell, source).
+    A missing hour (the clock change, a gap in the data) repeats the hour before;
+    without usable market data the simulated price model is used instead.
+    """
+    try:
+        market = dict((fetch or fetch_market)(first, first + timedelta(days=days - 1)))
+    except Exception:
+        market = {}
+    raw, missing = [], 0
+    for d in range(days):
+        day = first + timedelta(days=d)
+        for h in range(24):
+            t = datetime(day.year, day.month, day.day, h, tzinfo=SITE_TZ).astimezone(timezone.utc)
+            if t in market:
+                raw.append(market[t])
+            else:
+                missing += 1
+                raw.append(raw[-1] if raw else None)
+    source = SOURCE_REAL
+    if missing > days * 24 * 0.1 or raw[0] is None:
+        start = datetime(first.year, first.month, first.day, tzinfo=timezone.utc)
+        raw = [p for _, p in simulated_market(start, days * 24)][:days * 24]
+        source = SOURCE_SIMULATED
+    buy = [round(p + SURCHARGE_EUR_KWH, 4) for p in raw]
+    sell = [round(max(p - EXPORT_FEE_EUR_KWH, 0.0), 4) for p in raw]
+    return buy, sell, source
+

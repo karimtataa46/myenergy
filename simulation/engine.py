@@ -13,7 +13,7 @@ The engine guarantees:   solar + grid_import + discharge = load + charge + expor
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, List
+from typing import Optional, Callable, List
 
 import factory as F
 
@@ -35,10 +35,23 @@ class StepState:
     # The facility's parameters. Defaults to the standard factory so existing
     # callers that don't pass one behave exactly as before.
     cfg: "F.FacilityConfig" = field(default_factory=lambda: F.DEFAULT_CONFIG)
+    # Hourly prices (dynamic tariff). Left empty, the config's fixed day/night
+    # tariff applies, as it always did.
+    buy_price: Optional[float] = None                            # EUR/kWh this hour
+    sell_price: Optional[float] = None
+    forecast_buy_price: List[float] = field(default_factory=list)   # the window, current hour first
+    forecast_sell_price: List[float] = field(default_factory=list)
+    day_buy_prices: List[float] = field(default_factory=list)       # today's 24 prices (day-ahead, known)
 
     @property
     def soc_pct(self) -> float:
         return self.soc_kwh / self.capacity_kwh
+
+    def price_now(self) -> float:
+        return self.buy_price if self.buy_price is not None else self.cfg.tariff(self.hour)
+
+    def feed_in_now(self) -> float:
+        return self.sell_price if self.sell_price is not None else self.cfg.feed_in_tariff
 
 
 @dataclass
@@ -126,7 +139,7 @@ def step(state: StepState, controller: Controller) -> StepResult:
     grid_import = max(grid_net, 0.0)
     grid_export = max(-grid_net, 0.0)
 
-    cost = grid_import * cfg.tariff(state.hour) - grid_export * cfg.feed_in_tariff
+    cost = grid_import * state.price_now() - grid_export * state.feed_in_now()
     co2 = grid_import * cfg.grid_co2(state.hour)
 
     return StepResult(
@@ -142,18 +155,35 @@ def step(state: StepState, controller: Controller) -> StepResult:
     )
 
 
+PRICES_PUBLISHED_HOUR = 13      # local hour the next day's day-ahead prices come out
+
+
+def _published(i: int, known_end: int) -> int:
+    """Index of the price a controller can know for hour i: itself if published,
+    otherwise the same hour on the last published day."""
+    while i >= known_end:
+        i -= 24
+    return i
+
+
 def simulate(
     weather: List[F.DayWeather],
     controller: Controller,
     start_soc_kwh: float = None,
     cfg=None,
     forecast: List[F.DayWeather] = None,
+    buy_price: List[float] = None,
+    sell_price: List[float] = None,
 ) -> Totals:
     """Run the controller across a list of days. Returns accumulated Totals.
 
     `weather` is what really happens. `forecast` is what the controller is told will
     happen; without it the controller sees the real future (a perfect forecast,
     which flatters any forecast-based controller).
+
+    `buy_price` / `sell_price` are hourly prices for the whole run (24 per day, plant
+    local hours). Day-ahead prices are published a day before, so controllers may
+    see the prices of their window and of the current day.
     """
     forecast = forecast or weather
     if cfg is None:
@@ -205,6 +235,17 @@ def simulate(
                 forecast_load_kwh=window_load,
                 cfg=cfg,
             )
+            if buy_price is not None:
+                sell = sell_price if sell_price is not None else [cfg.feed_in_tariff] * n
+                state.buy_price, state.sell_price = buy_price[t], sell[t]
+                # Day-ahead prices are published around 13:00 for the next day. Hours
+                # beyond that are estimated from the same hour a day earlier, as the
+                # live system does, so a controller never sees prices nobody knows yet.
+                known_end = (d + 1) * 24 + (24 if h >= PRICES_PUBLISHED_HOUR else 0)
+                seen = [_published(i, known_end) for i in range(t, end)]
+                state.forecast_buy_price = [buy_price[i] for i in seen]
+                state.forecast_sell_price = [sell[i] for i in seen]
+                state.day_buy_prices = buy_price[d * 24:(d + 1) * 24]
 
             res = step(state, controller)
             soc = res.soc_kwh
