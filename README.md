@@ -65,19 +65,6 @@ All times are in the plant's local time. The simulated plant behind it is a
 development tool: it lets the test suite prove the system works, and is not part
 of the user's interface.
 
-### AI agents (n8n + LLM)
-
-On top of the API run two n8n workflows with a language model, Google Gemini (Claude
-works too; details in [automation/README.md](automation/README.md)):
-
-* **Frag deine Anlage**: a chat agent that answers the operator's questions in German or
-  English by calling the myEnergy API as tools, with a system prompt that only allows
-  answers grounded in the plant's real numbers.
-* **Daily briefing**: every morning a short German briefing about today and tonight.
-* **Evaluation**: one command asks the agent 20 questions and grades every answer against
-  the API's numbers at that moment, including questions it must decline. The first real
-  run graded only 7 answers (the free model quota ran out) and found two defects, now
-  fixed; a full re-run is still pending.
 
 ## How it works
 
